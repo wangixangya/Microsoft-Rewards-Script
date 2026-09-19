@@ -4,6 +4,7 @@ import type { MicrosoftRewardsBot } from '../../index'
 import { saveStorageState } from '../../util/SessionStore'
 import { unknownPageDiagnostic } from '../../util/ErrorDiagnostic'
 import { configureMediaBlocking, suspendMediaBlocking } from '../MediaBlocker'
+import { ensureRewardsSessionTicketFromPage } from '../RewardsSessionTicket'
 
 import { MobileAccessLogin } from './methods/MobileAccessLogin'
 import { EmailLogin } from './methods/EmailLogin'
@@ -974,6 +975,12 @@ export class Login {
 
     private async getRewardsSession(page: Page) {
         this.bot.logger.info(this.bot.isMobile, 'GET-REWARD-SESSION', 'Bootstrapping rewards context')
+
+        // Fork enhancement: seed the rewards session ticket before the dashboard is
+        // fetched, otherwise /api/getuserinfo degrades to the Bing flyout fallback and
+        // leaves punchCards/dailySetPromotions/morePromotions empty. Self-contained and
+        // error-swallowing (browser/RewardsSessionTicket.ts).
+        await ensureRewardsSessionTicketFromPage(this.bot, page, 'GET-REWARD-SESSION-TICKET')
 
         try {
             await this.bot.browser.func.bootstrap(page)
