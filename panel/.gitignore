@@ -1,0 +1,13 @@
+# 运行期数据 / 密钥，不要提交
+panel.conf
+notify.json
+env.list
+schedule.json
+state.json
+runlog.jsonl
+runlog.seen
+history.json
+logs-7d.txt
+__pycache__/
+*.bak*
+*.pyc
