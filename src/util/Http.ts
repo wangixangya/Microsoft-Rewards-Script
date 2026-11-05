@@ -3,7 +3,7 @@ import type { HttpMethod, ImpitResponse, RequestInit as ImpitRequestInit } from 
 import type { AccountProxy } from '../interface/Account'
 import { parseBrowserProxyUrl } from './Proxy'
 
-const DEFAULT_TIMEOUT = 20000
+const DEFAULT_TIMEOUT = 60000
 const MAX_RETRIES = 3
 const RETRY_BASE_DELAY = 1000
 
