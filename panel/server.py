@@ -34,7 +34,13 @@ def load_kv(path):
     return out
 
 
-CONF_D = load_kv(CONF)
+try:
+    CONF_D = load_kv(CONF)
+except Exception as e:
+    raise SystemExit(f"读不到 {CONF}：{e}")
+for _k in ("API_TOKEN", "PANEL_PASSWORD"):
+    if not CONF_D.get(_k):
+        raise SystemExit(f"panel.conf 缺少 {_k}，拒绝以空密钥启动")
 API_BASE = CONF_D.get("API_BASE", "http://127.0.0.1:3010").rstrip("/")
 API_TOKEN = CONF_D["API_TOKEN"]
 PASSWORD = CONF_D["PANEL_PASSWORD"]
@@ -67,33 +73,41 @@ CRON_FIELDS = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 6)]
 
 
 def cron_match(expr, tm):
-    """极简 cron：支持 * 数字 列表 范围 /步长。"""
-    parts = expr.split()
+    """极简 cron：支持 * 数字 列表 范围 /步长。
+    非法表达式（*/0、a-b、越界）一律判不匹配，绝不抛异常——否则调度线程会一直进 except。"""
+    parts = (expr or "").split()
     if len(parts) != 5:
         return False
     values = [tm.tm_min, tm.tm_hour, tm.tm_mday, tm.tm_mon, (tm.tm_wday + 1) % 7]
-    for part, (lo, hi), val in zip(parts, CRON_FIELDS, values):
-        if part == "*":
-            continue
-        ok = False
-        for token in part.split(","):
-            step = 1
-            if "/" in token:
-                token, s = token.split("/", 1)
-                step = int(s or 1)
-            if token == "*":
-                rng = range(lo, hi + 1)
-            elif "-" in token:
-                a, b = token.split("-", 1)
-                rng = range(int(a), int(b) + 1)
-            else:
-                start = int(token)
-                rng = range(start, hi + 1) if step > 1 else [start]
-            if val in rng and (val - rng.start) % step == 0:
-                ok = True
-                break
-        if not ok:
-            return False
+    try:
+        for part, (lo, hi), val in zip(parts, CRON_FIELDS, values):
+            if part == "*":
+                continue
+            ok = False
+            for token in part.split(","):
+                step = 1
+                if "/" in token:
+                    token, s = token.split("/", 1)
+                    step = int(s)
+                    if step < 1:
+                        continue
+                if token == "*":
+                    start, end = lo, hi
+                elif "-" in token:
+                    a, b = token.split("-", 1)
+                    start, end = int(a), int(b)
+                else:
+                    start = int(token)
+                    end = hi if step > 1 else start
+                if start < lo or end > hi or start > end:
+                    continue
+                if val in range(start, end + 1, step):
+                    ok = True
+                    break
+            if not ok:
+                return False
+    except (ValueError, ZeroDivisionError, TypeError):
+        return False
     return True
 
 
@@ -114,28 +128,99 @@ def api_call(method, path, body=None, timeout=60):
         return 502, json.dumps({"error": str(e)}).encode()
 
 
+def proxy_blocked(target):
+    """面板不代理 /config（API_ALLOW_CONFIG_REVEAL=true 时能读出账号明文密码）。
+    先做 URL 解码 + 路径规范化，避免 //config、/%63onfig、/x/../config 之类绕过。"""
+    from urllib.parse import unquote
+    p = (target or "").split("?", 1)[0]
+    for _ in range(5):          # 迭代解码到不动点，挡 /%2563onfig 这类多重编码
+        q = unquote(p)
+        if q == p:
+            break
+        p = q
+    p = "/" + "/".join(seg for seg in p.replace("\\", "/").split("/") if seg and seg != ".")
+    parts = []
+    for seg in p.split("/"):
+        if seg == "..":
+            if parts:
+                parts.pop()
+        elif seg:
+            parts.append(seg)
+    return bool(parts) and parts[0] == "config"
+
+
+def update_state(patch):
+    """state.json 的读改写必须原子，否则调度线程与 HTTP 线程会互相覆盖。"""
+    with LOCK:
+        st = load_json(STATE, {})
+        st.update(patch)
+        save_json(STATE, st)
+        return st
+
+
+def _recent_schedule_hit(expr, now_min=None, window_min=360):
+    """返回「最近一次 cron 命中」距现在的分钟差；没有命中过返回 None。
+    用于面板重启/宕机后的补跑判断，避免整天的任务直接丢失。"""
+    now = time.localtime() if now_min is None else None
+    base = time.mktime(now) if now is not None else None
+    for back in range(0, window_min + 1):
+        t = time.localtime(base - back * 60) if base is not None else time.localtime(time.time() - back * 60)
+        if cron_match(expr, t):
+            return back
+    return None
+
+
 def scheduler_loop():
-    last_fire = ""
+    last_fire = load_json(STATE, {}).get("lastFire", "")
     while True:
         try:
             cfg = load_json(SCHED, {"enabled": False, "cron": "0 7 * * *"})
-            if cfg.get("enabled") and cfg.get("cron"):
+            cron = (cfg.get("cron") or "").strip()
+            if cfg.get("enabled") and cron:
                 tm = time.localtime()
                 stamp = time.strftime("%Y%m%d%H%M", tm)
-                if cron_match(cfg["cron"], tm) and last_fire != stamp:
-                    st, _ = api_call("GET", "/status", timeout=15)
+                fire = cron_match(cron, tm)
+                reason = "定时命中"
+                if not fire:
+                    # 补跑：今天该跑的点已经过去了（面板重启/宕机导致错过），且最近 6 小时内命中过
+                    st_json = load_json(STATE, {})
+                    today = time.strftime("%Y-%m-%d", tm)
+                    if st_json.get("lastFireDate") != today:
+                        back = _recent_schedule_hit(cron)
+                        if back is not None and back >= 1:
+                            fire = True
+                            reason = f"补跑（错过 {back} 分钟）"
+                today_str = time.strftime("%Y-%m-%d", tm)
+                if fire and last_fire != stamp:
+                    st_prev = load_json(STATE, {})
+                    # 失败退避：10 分钟内不重复尝试，避免 API 挂掉时每 20 秒洪泛
+                    if reason.startswith("补跑") and time.time() - float(st_prev.get("lastAttemptAt") or 0) < 600:
+                        last_fire = stamp
+                        time.sleep(20)
+                        continue
                     running = False
-                    if st == 200:
-                        code, body = api_call("GET", "/status", timeout=15)
+                    code, body = api_call("GET", "/status", timeout=15)
+                    if code == 200:
                         try:
                             running = json.loads(body).get("state") == "running"
                         except Exception:
                             running = False
                     if running:
+                        # 今天这个点已经“处理过了”，必须写盘，否则任务跑完后补跑逻辑会再触发一次
                         log("[sched] 已在运行，跳过本次触发")
+                        update_state({"lastFire": stamp, "lastFireDate": today_str,
+                                      "lastFireAt": int(time.time()), "lastResult": "already-running"})
                     else:
-                        api_call("POST", "/start", {}, timeout=30)
-                        log("[sched] 触发运行", cfg["cron"])
+                        code, _ = api_call("POST", "/start", {}, timeout=30)
+                        log(f"[sched] 触发运行（{reason}，cron={cron}，HTTP {code}）")
+                        if code < 400:
+                            update_state({"lastFire": stamp, "lastFireDate": today_str,
+                                          "lastFireAt": int(time.time()), "lastResult": "started",
+                                          "lastAttemptAt": int(time.time())})
+                        else:
+                            update_state({"lastAttemptAt": int(time.time()),
+                                          "lastAttemptStamp": stamp,
+                                          "lastResult": f"failed-{code}"})
                     last_fire = stamp
         except Exception as e:
             log("[sched] 异常", e)
@@ -148,25 +233,43 @@ _SEEN_PATH = os.path.join(BASE, "runlog.seen")
 
 
 def _load_seen():
+    """游标 = {"id": 最后采集的日志 id, "t": 最后采集条目的 receivedAt}。
+    兼容旧的纯数字格式。"""
     try:
         with open(_SEEN_PATH, "r", encoding="utf-8") as f:
-            return int(f.read().strip() or 0)
+            raw = f.read().strip()
+        if not raw:
+            return {"id": 0, "t": ""}
+        if raw.startswith("{"):
+            d = json.loads(raw)
+            return {"id": int(d.get("id") or 0), "t": str(d.get("t") or "")}
+        return {"id": int(raw), "t": ""}
     except Exception:
-        return 0
+        return {"id": 0, "t": ""}
 
 
 def _save_seen(v):
+    """原子写游标：掉电/崩溃时不会留下半截文件（否则游标归零会重复落盘）。"""
+    tmp = _SEEN_PATH + ".tmp"
     try:
-        with open(_SEEN_PATH, "w", encoding="utf-8") as f:
-            f.write(str(v))
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(json.dumps(v))
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, _SEEN_PATH)
     except Exception:
-        pass
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
 
 
 def collector_loop():
     """把控制 API 的日志落盘（API 日志是内存态，容器重启就丢），并刷新统计。"""
     import stats as statsmod
-    last_id = _load_seen()
+    seen = _load_seen()
+    last_id = seen["id"]
+    last_t = seen["t"]
     last_refresh = 0
     while True:
         try:
@@ -177,23 +280,46 @@ def collector_loop():
                 except Exception:
                     data = {}
                 entries = data.get("logs") or []
+                # 控制 API 重启后日志 id 从 1 重新计数，会用 last_id 永远过滤掉所有新日志。
+                # 用 latestLogId < last_id 判定“日志流已重置”，把游标归零重新采集。
+                try:
+                    latest = int(data.get("latestLogId") or 0)
+                except Exception:
+                    latest = 0
+                first_t = str((entries[0] or {}).get("receivedAt") or "") if entries else ""
+                epoch_reset = bool((latest and latest < last_id) or
+                                   (last_id and last_t and first_t and first_t > last_t))
+                if epoch_reset:
+                    # 控制 API 重启后日志 id 从 1 重新计数：游标归零，但保留 last_t
+                    # 作为水位线，避免把整个缓冲区重新落盘导致统计重复计数。
+                    log(f"[collector] 日志流重置（latest={latest} / 游标={last_id}），按时间水位线续采")
+                    last_id = 0
                 new_lines = []
                 for e in entries:
                     if not isinstance(e, dict):
                         continue
                     eid = e.get("id") or 0
+                    et = str(e.get("receivedAt") or e.get("ts") or "")
                     if eid <= last_id:
                         continue
+                    if last_t and et:
+                        # 只有新周期的第一轮才允许丢弃“同一时间戳”的条目（防重复落盘）；
+                        # 平时必须用严格小于，否则同一秒内的第 2 条日志会被永久丢弃。
+                        if et < last_t or (epoch_reset and et == last_t):
+                            continue
                     raw = e.get("raw") or e.get("message")
                     if raw:
-                        new_lines.append({"id": eid, "t": e.get("receivedAt") or e.get("ts"), "raw": raw})
+                        new_lines.append({"id": eid, "t": et, "raw": raw})
                     if eid > last_id:
                         last_id = eid
+                    if et > last_t:
+                        last_t = et
                 if new_lines:
                     with open(RUNLOG, "a", encoding="utf-8") as f:
                         for item in new_lines:
                             f.write(json.dumps(item, ensure_ascii=False) + "\n")
-                    _save_seen(last_id)
+                if new_lines or last_id:
+                    _save_seen({"id": last_id, "t": last_t})
             if time.time() - last_refresh > 120:
                 statsmod.refresh(14)
                 last_refresh = time.time()
@@ -354,11 +480,15 @@ def notify_loop():
                 if code_exit not in (0, None, 143):
                     if ev.get("on_error", True):
                         t = "Rewards 运行异常退出"
-                        notifymod.broadcast(t, f"退出码 {code_exit}\n{text}")
-                        log("[notify] 已推送异常")
+                        res = notifymod.broadcast(t, f"退出码 {code_exit}\n{text}")
+                        log(f"[notify] 异常通知渠道 {len(res or [])} 个" if res else "[notify] 未配置渠道，异常未外发")
                 elif ev.get("on_finish", True):
-                    notifymod.broadcast(f"Rewards 运行完成 +{score} 分", text)
-                    log("[notify] 已推送完成")
+                    res = notifymod.broadcast(f"Rewards 运行完成 +{score} 分", text)
+                    if res:
+                        okn = sum(1 for r in res if r.get("ok"))
+                        log(f"[notify] 完成通知已发送 {okn}/{len(res)} 个渠道")
+                    else:
+                        log("[notify] 未配置推送渠道，跳过完成通知（每日汇总仍由 hermes cron 发送）")
             if ev.get("daily_summary"):
                 now = time.strftime("%H:%M")
                 stamp = time.strftime("%Y%m%d") + now
@@ -401,6 +531,41 @@ def check_cookie(header):
     return False
 
 
+# ---------- 登录限速（防局域网爆破） ----------
+_LOGIN_FAILS = {}
+_LOGIN_LOCK = threading.Lock()
+LOGIN_MAX_FAIL = 5
+LOGIN_LOCK_SEC = 300
+
+
+def _login_state(ip):
+    now = time.time()
+    with _LOGIN_LOCK:
+        n, until = _LOGIN_FAILS.get(ip, (0, 0))
+        if until and now > until:
+            _LOGIN_FAILS.pop(ip, None)
+            return 0, 0
+        return n, until
+
+
+def _login_fail(ip):
+    with _LOGIN_LOCK:
+        now = time.time()
+        if len(_LOGIN_FAILS) > 500:          # 扫描器伪造来源时防止内存无界增长
+            for k in [k for k, (_n, u) in _LOGIN_FAILS.items() if not u or u < now][:400]:
+                _LOGIN_FAILS.pop(k, None)
+        n, until = _LOGIN_FAILS.get(ip, (0, 0))
+        n += 1
+        until = time.time() + LOGIN_LOCK_SEC if n >= LOGIN_MAX_FAIL else until
+        _LOGIN_FAILS[ip] = (n, until)
+        return n, until
+
+
+def _login_ok(ip):
+    with _LOGIN_LOCK:
+        _LOGIN_FAILS.pop(ip, None)
+
+
 MIME = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -413,6 +578,7 @@ MIME = {
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    timeout = 30          # 单连接读写超时，防 slowloris 占线程
 
     def log_message(self, fmt, *a):
         pass
@@ -428,11 +594,17 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def send_file(self, rel):
-        path = os.path.join(BASE, rel.lstrip("/"))
-        if not os.path.isfile(path):
+        root = os.path.realpath(BASE)
+        path = os.path.realpath(os.path.join(root, rel.lstrip("/")))
+        # 只允许两种目标：BASE/index.html 与 BASE/static/ 下的静态资源。
+        # 仅做「在根目录内」判断不够——panel.conf / notify.json / runlog.seen 都在根目录里，
+        # /static/../panel.conf 会直接读到密钥。
+        static_dir = os.path.join(root, "static")
+        allowed = path == os.path.join(root, "index.html") or path.startswith(static_dir + os.sep)
+        ext = os.path.splitext(path)[1].lower()
+        if not allowed or ext not in MIME or not os.path.isfile(path):
             self.send_json(404, {"error": "not found"})
             return
-        ext = os.path.splitext(path)[1].lower()
         with open(path, "rb") as f:
             data = f.read()
         self.send_response(200)
@@ -445,7 +617,12 @@ class Handler(BaseHTTPRequestHandler):
         return check_cookie(self.headers.get("Cookie"))
 
     def read_body(self):
-        n = int(self.headers.get("Content-Length") or 0)
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except Exception:
+            n = 0
+        if n > 1_048_576:          # 面板最大 1MB，别被超大 body 拖死线程
+            return b""
         return self.rfile.read(n) if n else b""
 
     # --- routes ---
@@ -505,6 +682,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if p.startswith("/api/"):
             target = p[4:] or "/"
+            if proxy_blocked(target):
+                return self.send_json(403, {"error": "面板不代理 /config（含账号密码）"})
             qs = ("?" + u.query) if u.query else ""
             code, body = api_call("GET", target + qs, timeout=30)
             self.send_response(code)
@@ -523,11 +702,16 @@ class Handler(BaseHTTPRequestHandler):
         body = self.read_body()
 
         if p == "/login":
+            ip = self.client_address[0]
+            n, until = _login_state(ip)
+            if until and time.time() < until:
+                return self.send_json(429, {"ok": False, "error": f"尝试过多，请 {int((until - time.time()) / 60) + 1} 分钟后再试"})
             try:
                 data = json.loads(body or b"{}")
             except Exception:
                 data = {}
             if hmac.compare_digest(str(data.get("password", "")), PASSWORD):
+                _login_ok(ip)
                 self.send_response(200)
                 self.send_header("Set-Cookie", make_cookie())
                 payload = b'{"ok":true}'
@@ -536,6 +720,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(payload)
             else:
+                fails, lock_until = _login_fail(ip)
+                if lock_until and time.time() < lock_until:
+                    log(f"[login] {ip} 连续失败 {fails} 次，锁定 {LOGIN_LOCK_SEC}s")
                 time.sleep(0.6)
                 self.send_json(401, {"ok": False, "error": "密码错误"})
             return
@@ -581,6 +768,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if p.startswith("/api/"):
             target = p[4:] or "/"
+            if proxy_blocked(target):
+                return self.send_json(403, {"error": "面板不代理 /config（含账号密码）"})
             try:
                 payload = json.loads(body) if body else {}
             except Exception:
@@ -667,6 +856,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if p.startswith("/api/"):
             target = p[4:] + (("?" + u.query) if u.query else "")
+            if proxy_blocked(target):
+                return self.send_json(403, {"error": "面板不代理 /config（含账号密码）"})
             payload = None
             if body:
                 try:
@@ -684,13 +875,30 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json(404, {"error": "not found"})
 
 
+def _rotate_runlog(max_bytes=20 * 1024 * 1024, keep_lines=50000):
+    """runlog.jsonl 无上限增长会拖慢统计解析，超阈值时只保留最近 keep_lines 行。"""
+    try:
+        if not os.path.exists(RUNLOG) or os.path.getsize(RUNLOG) < max_bytes:
+            return
+        with open(RUNLOG, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+        with open(RUNLOG, "w", encoding="utf-8") as f:
+            f.writelines(lines[-keep_lines:])
+        log(f"[collector] runlog 已裁剪：{len(lines)} → {min(len(lines), keep_lines)} 行")
+    except Exception as e:
+        log("[collector] runlog 裁剪失败", e)
+
+
 def main():
+    _rotate_runlog()
     if not os.path.exists(SCHED):
         save_json(SCHED, {"enabled": True, "cron": "0 7 * * *"})
     threading.Thread(target=scheduler_loop, daemon=True).start()
     threading.Thread(target=collector_loop, daemon=True).start()
     threading.Thread(target=notify_loop, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    srv.daemon_threads = True
+    srv.timeout = 30          # 慢连接（slowloris）超时断开
     log(f"面板已启动 http://0.0.0.0:{PORT}  → {API_BASE}")
     srv.serve_forever()
 

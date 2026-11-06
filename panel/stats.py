@@ -10,6 +10,7 @@
 import json
 import os
 import re
+import threading
 import time
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
@@ -18,6 +19,7 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 ARCHIVE = os.path.join(BASE, "logs-7d.txt")
 RUNLOG = os.path.join(BASE, "runlog.jsonl")
 OUT = os.path.join(BASE, "history.json")
+_WRITE_LOCK = threading.Lock()
 
 LINE_RE = re.compile(
     r"^\[(\d{1,2})/(\d{1,2})/(\d{4}),\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)\]\s*"
@@ -175,9 +177,13 @@ def build(days=14):
 
 def refresh(days=14):
     data = build(days)
-    with open(OUT + ".tmp", "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=1)
-    os.replace(OUT + ".tmp", OUT)
+    # 并发安全：collector / HTTP 请求 / 推送线程都会调用 refresh，
+    # 共用同一个 .tmp 会互相覆盖写出半截 JSON。加锁 + 每进程唯一临时文件。
+    with _WRITE_LOCK:
+        tmp = f"{OUT}.tmp.{os.getpid()}.{threading.get_ident()}"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, OUT)
     return data
 
 
