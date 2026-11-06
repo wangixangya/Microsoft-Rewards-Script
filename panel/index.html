@@ -409,6 +409,7 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
 <div class="flash" id="flash"></div>
 
 <script>
+let _lastStats = 0, _prevState = null;   // 收益自动刷新的时间戳 / 上次运行状态
 const $ = s => document.querySelector(s);
 const el = (t, cls, txt) => { const e = document.createElement(t); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
 let STATS = null, RANGE = 7, FILTER = 'all', timer = null, ACCTS = [];
@@ -459,6 +460,8 @@ async function loadStatus() {
     const st = await api('/status');
     const run = st.run || {}, live = run.live || {};
     const running = st.state === 'running';
+    if (_prevState === true && !running) { _lastStats = 0; loadStats(); loadAccounts(); }
+    _prevState = running;
     $('#stateTxt').textContent = running ? '运行中' : (st.state === 'idle' ? '空闲' : st.state);
     $('#statePill').className = 'pill ' + (running ? 'run' : '');
     $('#startBtn').disabled = running;
@@ -739,21 +742,33 @@ async function loadAccounts() {
   const byEmail = {};
   ENV.forEach(x => byEmail[String(x.email).toLowerCase()] = x);
 
-  const d = await api('/accounts');
+  // 以「配置里的账号」为主表（后端已并入 balance/today/7d），再用 API 的内存态补连续成功/上次运行；
+  // 反过来用 API 当主表的话，容器一重建累计积分就全变 0。
+  let APIACC = {};
+  try {
+    const d = await api('/accounts');
+    (d.accounts || []).forEach(x => APIACC[String(x.email).toLowerCase()] = x);
+  } catch (e) {}
+  const rows = ENV.length
+    ? ENV.map(e => ({ ...(APIACC[String(e.email).toLowerCase()] || {}), ...e }))
+    : Object.values(APIACC);
   const tb = $('#acctTable'); tb.innerHTML = '';
-  (d.accounts || []).forEach(a => {
+  rows.forEach(a => {
     const tr = el('tr');
-    // API 的运行时状态是内存态，容器重建后会归零；用面板统计里的余额兜底
     const shortName = String(a.email).split('@')[0];
-    let collected = a.totalCollected;
-    if ((!collected || collected === 0) && STATS) {
+    let collected = a.balance;
+    if (collected == null) collected = a.totalCollected;
+    if ((collected == null || collected === 0) && STATS) {
       for (let i = STATS.days.length - 1; i >= 0; i--) {
         const acc = (STATS.days[i].accounts || {})[shortName];
         if (acc && acc.balance != null) { collected = acc.balance; break; }
       }
     }
+    const balTd = el('td');
+    balTd.innerHTML = nf(collected) + (a.todayPoints ? ` <span class="hint">今日 +${a.todayPoints}</span>` : '');
     tr.append(el('td', '', String(a.index)), el('td', 'mono', a.email), el('td', '', a.geoLocale || '—'),
-      el('td', '', nf(collected)), el('td', '', String(a.successStreak ?? 0)),
+      balTd,
+      el('td', '', String(a.successStreak ?? 0)),
       el('td', 'mono', a.lastRunAt ? new Date(a.lastRunAt).toLocaleString('zh-CN') : '—'));
     const st = el('td'); st.append(el('span', 'tag ' + (a.lastError ? 'r' : 'g'), a.lastError ? '异常' : '正常'));
     tr.append(st);
@@ -1095,9 +1110,12 @@ $('#dailyTime').onchange = () => saveNotify();
 
 function boot() {
   loadStatus(); loadStats(); loadAccounts(); loadSched();
+  _lastStats = Date.now();
   clearInterval(timer);
   timer = setInterval(() => {
     loadStatus();
+    // 收益/余额只在页面加载时拉过一次 → 跑完不刷新会一直显示旧数据（"第二个号还是 0 分"就是这么来的）
+    if (Date.now() - _lastStats > 60000) { _lastStats = Date.now(); loadStats(); loadAccounts(); }
     if ($('#sec-logs').classList.contains('on')) loadLogs();
   }, 4000);
 }

@@ -663,7 +663,30 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, out)
 
         if p == "/panel/accounts":
-            return self.send_json(200, {"accounts": env_accounts(), "state": run_state()})
+            # API 的账号运行状态是内存态，容器重建后就归零（累计积分/连续成功全变 0）。
+            # 这里用面板自己落盘的统计补齐「累计余额 / 今日 / 近7日」，前端不再依赖内存态。
+            accs = env_accounts()
+            try:
+                import stats as statsmod
+                data = statsmod.build(7)
+                days = data.get("days") or []
+                today = days[-1].get("accounts", {}) if days else {}
+                per = {}
+                for d in days:
+                    for name, v in (d.get("accounts") or {}).items():
+                        e = per.setdefault(name, {"d7": 0, "balance": None})
+                        e["d7"] += int(v.get("total") or 0)
+                        if v.get("balance") is not None:
+                            e["balance"] = v.get("balance")
+                for a in accs:
+                    key = str(a.get("email") or "").split("@")[0]
+                    info = per.get(key) or {}
+                    a["balance"] = info.get("balance")
+                    a["todayPoints"] = int((today.get(key) or {}).get("total") or 0)
+                    a["points7d"] = info.get("d7", 0)
+            except Exception as e:
+                log("[panel] 账号统计补全失败", e)
+            return self.send_json(200, {"accounts": accs, "state": run_state()})
 
         if p == "/panel/stats":
             import stats as statsmod
