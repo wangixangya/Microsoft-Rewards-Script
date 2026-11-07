@@ -22,7 +22,7 @@ from urllib.parse import urlparse, parse_qs, unquote, quote
 BASE = os.path.dirname(os.path.abspath(__file__))
 CONF = os.path.join(BASE, "panel.conf")
 SCHED = os.path.join(BASE, "schedule.json")
-VERSION = "2.7.0"
+VERSION = "2.7.1"
 BUILD_DATE = "2026-11-07"
 STATE = os.path.join(BASE, "state.json")
 PORT = int(os.environ.get("PANEL_PORT", "5310"))
