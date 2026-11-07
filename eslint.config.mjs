@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 
 export default defineConfig(
     {
-        ignores: ['dist/**', 'node_modules/**', 'diagnostics/**', 'sessions/**']
+        ignores: ['dist/**', 'node_modules/**', 'diagnostics/**', 'sessions/**', 'panel/**']
     },
 
     {

@@ -6,7 +6,7 @@ set -uo pipefail
 LOG=/tmp/ms-panel-selfupdate.log
 DEST=/root/ms-panel
 REPO=wangixangya/Microsoft-Rewards-Script
-REF=v4
+REF=v5
 FILES="server.py index.html update-image.sh stats.py notify.py rewards-center.js"
 ts() { date '+%H:%M:%S'; }
 say() { echo "[$(ts)] $*" >> "$LOG"; }
