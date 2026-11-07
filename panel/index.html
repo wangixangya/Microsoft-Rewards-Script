@@ -340,8 +340,13 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
 
     <div class="sec" id="sec-logs">
       <div class="card" style="margin-bottom:14px">
-        <div class="card-h"><h3>运行历史</h3><span class="hint">自动记录每次运行（含定时与手动）</span></div>
-        <table><thead><tr><th>开始</th><th>耗时</th><th>退出码</th><th>得分</th><th>结果</th></tr></thead>
+        <div class="card-h"><h3>运行历史</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="hint">最近 3 天</span>
+            <select id="runAcct" style="width:auto"><option value="">全部账号</option></select>
+          </div>
+        </div>
+        <table><thead><tr><th>开始</th><th>耗时</th><th>状态</th><th>得分</th><th>账号明细</th></tr></thead>
           <tbody id="runTb"><tr><td colspan="5" class="hint">暂无记录</td></tr></tbody></table>
       </div>
 
@@ -744,7 +749,7 @@ function showSection(sec) {
   if (sec === 'dash') { loadSystem(); loadRuns(); }
   if (sec === 'release') loadRelease();
   if (sec === 'backup') loadBackups();
-  if (sec === 'logs') loadRuns();
+  if (sec === 'logs') { fillRunAcct(); loadRuns(); }
 }
 
 async function loadRelease() {
@@ -810,14 +815,22 @@ setInterval(() => { if ($('#sec-dash').classList.contains('on')) loadSystem(); }
 
 async function loadRuns() {
   try {
-    const d = await papi('/panel/runs');
+    const sel = document.getElementById('runAcct');
+    const acc = sel ? sel.value : '';
+    const d = await papi('/panel/runs?days=3' + (acc ? '&account=' + encodeURIComponent(acc) : ''));
     const rows = (d.runs || []).map(r => {
-      const bad = r.exit != null && ![0, 143].includes(r.exit);
-      const res = bad ? '<span style="color:#b91c1c">异常</span>' : '正常';
+      const st = (r.status || '').toLowerCase();
+      const bad = ['failed', 'error', 'cancelled'].includes(st) || (r.code != null && ![0, 143].includes(r.code));
+      const label = bad ? `<span style="color:#b91c1c">${r.status || '异常'}</span>` : (r.status || '正常');
       const dur = r.dur >= 60 ? Math.floor(r.dur / 60) + '分' + (r.dur % 60) + '秒' : (r.dur || 0) + '秒';
-      return `<tr><td>${r.start || '—'}</td><td>${dur}</td><td>${r.exit == null ? '—' : r.exit}</td><td>${r.score == null ? '—' : '+' + r.score}</td><td>${res}</td></tr>`;
+      const det = (r.accounts || []).map(a => {
+        const c = a.collected == null ? '—' : '+' + a.collected;
+        return `${String(a.email).split('@')[0]} ${c}`;
+      }).join(' · ') || '—';
+      return `<tr><td>${r.start || '—'}</td><td>${dur}</td><td>${label}</td>
+        <td>${r.collected == null ? '—' : '+' + r.collected}</td><td class="hint">${det}</td></tr>`;
     });
-    $('#runTb').innerHTML = rows.join('') || '<tr><td colspan="5" class="hint">暂无记录</td></tr>';
+    $('#runTb').innerHTML = rows.join('') || '<tr><td colspan="5" class="hint">最近 3 天没有记录</td></tr>';
   } catch (e) {}
 }
 
@@ -865,6 +878,28 @@ async function pollJsBuild(n) {
     if (!st.running) { $('#relSyncMsg').textContent = '完成'; loadRelease(); }
   } catch (e) { if (n < 90) setTimeout(() => pollJsBuild(n + 1), 5000); }
 }
+
+async function fillRunAcct() {
+  try {
+    const d = await papi('/panel/accounts');
+    const sel = document.getElementById('runAcct');
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">全部账号</option>' +
+      (d.accounts || []).map(a => `<option value="${a.email}">${a.email}</option>`).join('');
+    if (cur) sel.value = cur;
+  } catch (e) {}
+}
+document.addEventListener('change', e => {
+  if (e.target && e.target.id === 'runAcct') loadRuns();
+});
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-acctlog]');
+  if (!b) return;
+  showSection('logs');
+  const sel = document.getElementById('runAcct');
+  if (sel) { sel.value = b.dataset.acctlog; loadRuns(); }
+});
 
 // 日志自动刷新
 let _logTimer = null;
@@ -1440,7 +1475,8 @@ async function renderAcctSched() {
       <td><span class="sw ${t.enabled ? 'on' : ''}" data-acctsw="${a.index}" style="display:inline-block"></span></td>
       <td><input type="text" data-acctcron="${a.index}" value="${t.cron || ''}" placeholder="留空=不独立跑" style="width:150px"></td>
       <td style="white-space:nowrap"><button class="btn sm" data-acctrun="${a.index}">立即运行</button>
-        <button class="btn sm" data-acctsec="${a.index}">密码/2FA</button></td></tr>`;
+        <button class="btn sm" data-acctsec="${a.index}">密码/2FA</button>
+        <button class="btn sm" data-acctlog="${a.email}">运行记录</button></td></tr>`;
   }).join('') || '<tr><td colspan="5" class="hint">没有账号</td></tr>';
   tb.querySelectorAll('[data-acctsw]').forEach(sw => sw.onclick = () => {
     sw.classList.toggle('on');

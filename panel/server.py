@@ -1490,6 +1490,71 @@ def runs_loop():
         time.sleep(15)
 
 
+
+RUNHIST = "/root/microsoft-rewards-script/config/run-history.json"
+
+
+def runs_container(days=3, account=None):
+    """从 v5 自己的 run-history.json 读运行记录（含每账号收集分），默认最近 3 天。"""
+    import datetime as _dt
+    try:
+        data = json.load(open(RUNHIST))
+        if not isinstance(data, list):
+            data = []
+    except Exception:
+        data = []
+    cutoff = time.time() - days * 86400
+    rows = []
+    for e in data:
+        try:
+            ts = _dt.datetime.strptime(str(e.get("startedAt"))[:19], "%Y-%m-%dT%H:%M:%S").replace(
+                tzinfo=_dt.timezone.utc).astimezone().timestamp()
+        except Exception:
+            continue
+        if ts < cutoff:
+            continue
+        run = e.get("run") or {}
+        totals = run.get("totals") or {}
+        exitinfo = e.get("exit") or {}
+        accs = []
+        for a in (run.get("accounts") or []):
+            accs.append({"email": a.get("email"),
+                         "collected": a.get("collectedPoints"),
+                         "before": a.get("initialPoints"),
+                         "after": a.get("finalPoints")})
+        collected = totals.get("collected")
+        if account:
+            hit = [x for x in accs if (x.get("email") or "").lower() == str(account).lower()]
+            if not hit:
+                continue
+            collected = hit[0].get("collected")
+        rows.append({
+            "start": time.strftime("%m-%d %H:%M", time.localtime(ts)),
+            "ts": ts,
+            "dur": round(float(totals.get("runtimeMinutes") or 0)),
+            "status": exitinfo.get("status") or run.get("status") or "",
+            "code": exitinfo.get("code"),
+            "collected": collected,
+            "accounts": accs,
+        })
+    rows.sort(key=lambda r: r["ts"], reverse=True)
+    return rows
+
+
+def runs_fallback(days=3, account=None):
+    cutoff = time.time() - days * 86400
+    out = []
+    for r in runs_load()[::-1]:
+        try:
+            ts = time.mktime(time.strptime(r.get("start") + ":00", "%Y-%m-%d %H:%M:%S"))
+        except Exception:
+            continue
+        if ts < cutoff:
+            continue
+        out.append({"start": r.get("start")[5:], "ts": ts, "dur": r.get("dur"), "status": r.get("state") or "",
+                    "code": r.get("exit"), "collected": r.get("score"), "accounts": []})
+    return out
+
 def backup_create(note=""):
     os.makedirs(BACKUP_DIR, exist_ok=True)
     name = "panel-" + time.strftime("%Y%m%d-%H%M%S") + ".zip"
@@ -1706,8 +1771,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(500, {"error": f"读取系统状态失败: {e}"})
 
         if p == "/panel/runs":
-            runs = runs_load()[-60:][::-1]
-            return self.send_json(200, {"runs": runs, "total": len(runs_load())})
+            q = parse_qs(u.query)
+            try:
+                days = int((q.get("days") or ["3"])[0])
+            except Exception:
+                days = 3
+            days = max(1, min(days, 30))
+            account = (q.get("account") or [""])[0].strip() or None
+            rows = runs_container(days, account)
+            if not rows:
+                rows = runs_fallback(days, account)
+            return self.send_json(200, {"runs": rows, "days": days, "account": account})
 
         if p == "/panel/backup/list":
             return self.send_json(200, {"backups": backup_list()})
