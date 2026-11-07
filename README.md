@@ -132,17 +132,7 @@ cd panel && python3 server.py     # 0.0.0.0:5310，密码见 panel.conf
 
 ## 架构
 
-```mermaid
-flowchart LR
-  U[上游 v5] -->|每日 05:00 同步| R[本仓库 v5]
-  R -->|Actions| V[Validate]
-  R -->|patch-bing-origin| C["ghcr.io/...:5-cn"]
-  R -->|build-single| J[ql-single-v5 发布]
-  R -->|部署| P[面板 5310]
-  C --> D[ms-rewards-api 容器]
-  D -->|run-history.json| P
-  P -->|Telegram| N[通知]
-```
+<img src="docs/assets/flow.svg" alt="Pipeline" width="100%">
 
 - **同步**：上游合并 → 冲突规则（面板/文档保留本地、源码取上游）→ 推送 → CI
 - **补丁**：`origin === URLs.bing.origin` 改写为 `isBingHost(...)`，让 `cn.bing.com` 通过校验

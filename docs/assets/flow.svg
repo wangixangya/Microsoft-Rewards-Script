@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 400" width="1180" height="400" role="img" aria-label="Pipeline">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9aa0a6"/>
+    </marker>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f1011"/>
+      <stop offset="100%" stop-color="#17181a"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1180" height="400" rx="18" fill="url(#g)"/>
+
+  <g font-family="Inter,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="15" fill="#ffffff">
+    <!-- 1 上游 -->
+    <rect x="40" y="160" width="150" height="72" rx="12" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.18"/>
+    <text x="115" y="192" text-anchor="middle" font-size="15" font-weight="600">上游 v5</text>
+    <text x="115" y="213" text-anchor="middle" font-size="12" opacity="0.55">TheNetsky</text>
+
+    <!-- arrow -->
+    <line x1="196" y1="196" x2="246" y2="196" stroke="#9aa0a6" stroke-width="1.4" marker-end="url(#a)"/>
+    <text x="221" y="184" text-anchor="middle" font-size="11" opacity="0.6">05:00</text>
+
+    <!-- 2 仓库 -->
+    <rect x="252" y="146" width="170" height="100" rx="12" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.28"/>
+    <text x="337" y="182" text-anchor="middle" font-size="15" font-weight="600">本仓库 v5</text>
+    <text x="337" y="203" text-anchor="middle" font-size="12" opacity="0.6">汉化层 + 补丁 + CI</text>
+    <text x="337" y="223" text-anchor="middle" font-size="11" opacity="0.45">wangixangya</text>
+
+    <!-- fan out -->
+    <path d="M428 196 L470 196 L470 92 L512 92" fill="none" stroke="#9aa0a6" stroke-width="1.4" marker-end="url(#a)"/>
+    <line x1="428" y1="196" x2="512" y2="196" stroke="#9aa0a6" stroke-width="1.4" marker-end="url(#a)"/>
+    <path d="M428 196 L470 196 L470 300 L512 300" fill="none" stroke="#9aa0a6" stroke-width="1.4" marker-end="url(#a)"/>
+
+    <!-- 3 产物 -->
+    <rect x="518" y="66" width="180" height="52" rx="10" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.18"/>
+    <text x="608" y="88" text-anchor="middle" font-size="13">Validate · tsc/eslint</text>
+    <text x="608" y="106" text-anchor="middle" font-size="11" opacity="0.5">每次推送</text>
+
+    <rect x="518" y="170" width="180" height="52" rx="10" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.3"/>
+    <text x="608" y="192" text-anchor="middle" font-size="13" font-weight="600">ghcr.io :5-cn</text>
+    <text x="608" y="210" text-anchor="middle" font-size="11" opacity="0.5">补丁 + 瘦身镜像</text>
+
+    <rect x="518" y="274" width="180" height="52" rx="10" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.18"/>
+    <text x="608" y="296" text-anchor="middle" font-size="13">ql-single-v5</text>
+    <text x="608" y="314" text-anchor="middle" font-size="11" opacity="0.5">31.7 MB 单文件</text>
+
+    <!-- to container -->
+    <line x1="704" y1="196" x2="764" y2="196" stroke="#9aa0a6" stroke-width="1.4" marker-end="url(#a)"/>
+
+    <rect x="770" y="160" width="160" height="72" rx="12" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.28"/>
+    <text x="850" y="192" text-anchor="middle" font-size="14" font-weight="600">ms-rewards-api</text>
+    <text x="850" y="212" text-anchor="middle" font-size="11" opacity="0.55">每日 07:00 运行</text>
+
+    <!-- to panel -->
+    <line x1="936" y1="196" x2="996" y2="196" stroke="#9aa0a6" stroke-width="1.4" marker-end="url(#a)"/>
+    <text x="966" y="184" text-anchor="middle" font-size="11" opacity="0.6">API</text>
+
+    <rect x="1002" y="146" width="140" height="100" rx="12" fill="#ffffff" fill-opacity="0.12" stroke="#ffffff" stroke-opacity="0.35"/>
+    <text x="1072" y="182" text-anchor="middle" font-size="15" font-weight="600">面板 5310</text>
+    <text x="1072" y="203" text-anchor="middle" font-size="11" opacity="0.6">运行历史 / 备份</text>
+    <text x="1072" y="223" text-anchor="middle" font-size="11" opacity="0.6">Telegram 通知</text>
+
+    <text x="40" y="356" font-size="12" opacity="0.4" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">
+      upstream merge → patch → build → deploy → run → report
+    </text>
+  </g>
+</svg>
