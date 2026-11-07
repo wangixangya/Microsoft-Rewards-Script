@@ -20,7 +20,7 @@ from urllib.parse import urlparse, parse_qs, unquote, quote
 BASE = os.path.dirname(os.path.abspath(__file__))
 CONF = os.path.join(BASE, "panel.conf")
 SCHED = os.path.join(BASE, "schedule.json")
-VERSION = "2.4.0"
+VERSION = "2.4.1"
 BUILD_DATE = "2026-11-07"
 STATE = os.path.join(BASE, "state.json")
 PORT = int(os.environ.get("PANEL_PORT", "5310"))
@@ -1170,6 +1170,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", MIME.get(ext, "application/octet-stream"))
         self.send_header("Content-Length", str(len(data)))
+        # 面板更新很勤：index.html 必须 no-store，否则手机上一直加载旧版 UI（版本号显示上一版就是这个原因）
+        if ext == ".html":
+            self.send_header("Cache-Control", "no-store, must-revalidate")
         self.end_headers()
         self.wfile.write(data)
 
