@@ -175,7 +175,7 @@ function collectAccounts() {
 }
 
 function buildConfig(envCount) {
-  const cur = readJson(path.join(CONFIG_DIR, 'config.json'), {});
+  const cur = readJson(path.join(SRC, 'config.json'), readJson(path.join(CONFIG_DIR, 'config.json'), {}));
   const workers = { ...(cur.workers || {}) };
   for (const kv of (process.env.MSR_WORKERS || '').split(',')) {
     const [k, v] = kv.split('=').map(s => (s || '').trim());
@@ -191,9 +191,11 @@ function buildConfig(envCount) {
   if (Object.keys(workers).length) cfg.workers = workers;
   if (process.env.MSR_PROXY) cfg.proxy = { ...(cfg.proxy || {}), url: process.env.MSR_PROXY };
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
-  const target = path.join(CONFIG_DIR, 'config.json');
-  if (fs.existsSync(target)) fs.copyFileSync(target, target + '.bak');
+  // v4.x 只从项目根/dist/src 找 config.json，所以主写入位置是 upstream/config.json
+  const target = path.join(SRC, 'config.json');
+  if (fs.existsSync(target)) fs.copyFileSync(target, path.join(CONFIG_DIR, 'config.json.bak'));
   writeJson(target, cfg);
+  writeJson(path.join(CONFIG_DIR, 'config.json'), cfg);  // 快照，方便面板/备份查看
   log(`配置已写入 ${target}（账号 ${envCount} 个走环境变量，不落盘密码）`);
 }
 
