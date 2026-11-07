@@ -46,6 +46,8 @@ nav button:focus{outline:none}
 nav button.on{background:var(--ink);color:#fff}
 .side-foot{margin-top:auto;display:flex;flex-direction:column;gap:10px;padding:0 6px}
 .side-foot .stat{font-size:11.5px;color:var(--dim-2);font-family:var(--mono);display:flex;justify-content:space-between}
+.side-foot a.linkbtn{display:block;text-align:center;text-decoration:none;color:var(--fg,inherit)}
+.side-foot a.linkbtn:hover{background:rgba(0,0,0,.06)}
 main{padding:28px 32px 72px;max-width:1340px;width:100%}
 header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
 h1{font-size:23px;font-weight:650;letter-spacing:-.4px}
@@ -211,6 +213,8 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
     </nav>
     <div class="side-foot">
       <div class="stat"><span>调度</span><span id="footSched">—</span></div>
+      <a class="btn sm ghost linkbtn" href="https://github.com/wangixangya/Microsoft-Rewards-Script" target="_blank" rel="noopener">GitHub 仓库</a>
+      <a class="btn sm ghost linkbtn" href="https://t.me/wangixangya" target="_blank" rel="noopener">Telegram 群</a>
       <button class="btn sm ghost" id="logoutBtn">退出登录</button>
     </div>
   </aside>
@@ -354,6 +358,9 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
         <div class="card-h">
           <h3>运行日志</h3>
           <div style="display:flex;gap:8px;align-items:center">
+            <label class="hint" style="display:flex;gap:6px;align-items:center;cursor:pointer">
+              <input type="checkbox" id="zhLog" checked style="width:auto">中文日志
+            </label>
             <label class="hint" style="display:flex;gap:6px;align-items:center;cursor:pointer">
               <input type="checkbox" id="autoScroll" checked style="width:auto">自动滚动
             </label>
@@ -1171,6 +1178,8 @@ function renderBars() {
   const lg = $('#legend'); if (lg) lg.innerHTML = '';
 }
 
+function acctName(a) { return NOTES[a] || a; }
+
 function renderCompare() {
   if (!STATS) return;
   const days = STATS.days.slice(-RANGE);
@@ -1186,7 +1195,7 @@ function renderCompare() {
     }
     const tr = el('tr');
     if (FILTER === a) { tr.style.background = '#f4f4f5'; tr.style.boxShadow = 'inset 3px 0 0 #0a0a0a'; }
-    tr.append(el('td', 'mono', a), el('td', '', nf(sum)), el('td', '', nf(td0)), el('td', 'mono', nf(bal)));
+    tr.append(el('td', 'mono', acctName(a)), el('td', '', nf(sum)), el('td', '', nf(td0)), el('td', 'mono', nf(bal)));
     const td = el('td'), sp = el('div', 'spark');
     sp.style.height = '22px'; sp.style.marginTop = '0';
     const mx = Math.max(1, ...days.map(d => (d.accounts[a] || {}).total || 0));
@@ -1211,7 +1220,7 @@ function renderRecent() {
     const td = el('td');
     Object.keys(d.accounts).forEach(a => {
       if (FILTER !== 'all' && a !== FILTER) return;
-      const t = el('span', 'tag', `${a} +${d.accounts[a].total}`);
+      const t = el('span', 'tag', `${acctName(a)} +${d.accounts[a].total}`);
       t.style.marginRight = '8px'; t.style.fontSize = '11px';
       td.append(t);
     });
@@ -1361,6 +1370,78 @@ $('#addAcctBtn').onclick = async () => {
   }
 };
 
+
+/* ===== 日志汉化：只给“看得懂”用，原文保留在 title 里 ===== */
+const LOG_TITLE_ZH = {
+  'SEARCH-BING': '搜索', 'SEARCH-DELAY': '搜索间隔', 'SEARCH-QUERY': '搜索词',
+  'QUERY-QUEUE': '搜索词队列', 'QUERY-CLUSTER': '搜索词分组', 'QUERY-SOURCE': '搜索词来源',
+  'COOKIE-SYNC': '会话同步', 'SEARCH-COOKIE-CAPTURE': '会话 Cookie',
+  'PUNCHCARD-PROGRESS': '积分卡进度', 'ACCOUNT-INFO': '账号信息', 'ACCOUNT-BALANCE': '账号余额',
+  'GET-DASHBOARD-DATA': '面板数据', 'CLOSE-BROWSER': '关闭浏览器', 'PRE-BROWSER-CLOSE': '保存会话',
+  'BROWSER': '浏览器', 'DAILY-SET': '每日任务', 'MORE-PROMOTIONS': '更多活动', 'PUNCH-CARD': '打卡任务',
+  'LOGIN': '登录', 'SESSION': '会话', 'SEARCH': '搜索', 'REWARDS': '奖励', 'API': '接口',
+};
+const LOG_FIELD_ZH = {
+  search: '第几次', query: '搜索词', currentBalance: '余额', pointsGained: '本轮得分',
+  remaining: '剩余次数', waitMs: '等待', cookies: 'Cookie 数', level: '等级',
+  progress: '进度', offerId: '任务', pointsProgress: '可用积分', pointsRemaining: '距上限',
+  lifetimeEarn: '累计获得', initialPoints: '开始时余额', candidates: '候选词', related: '相关词',
+  skippedSeen: '跳过重复', received: '获取', queued: '入队', emitted: '已用',
+  language: '语言', country: '地区', source: '来源', cluster: '分组', topic: '主题',
+  session: '会话', warnings: '警告', origin: '来源', previous: '之前', current: '当前',
+};
+
+function _parseLogMsg(msg) {
+  const parts = String(msg || '').split(' | ');
+  const head = parts.shift() || '';
+  const kv = {};
+  parts.forEach(p => {
+    const i = p.indexOf('=');
+    if (i > 0) kv[p.slice(0, i).trim()] = p.slice(i + 1).trim().replace(/^"|"$/g, '');
+  });
+  return { head, kv };
+}
+
+function _flatKv(kv) {
+  return Object.keys(kv).map(k => {
+    let v = kv[k];
+    if (k === 'waitMs') v = Math.round(Number(v) / 1000) + ' 秒';
+    else if (k === 'progress' && /^\d+\/\d+$/.test(v)) v = v;
+    else if (v.length > 60) v = v.slice(0, 60) + '…';
+    return `${LOG_FIELD_ZH[k] || k}=${v}`;
+  }).join(' · ');
+}
+
+function zhLogMessage(msg) {
+  const { head, kv } = _parseLogMsg(msg);
+  let m;
+  if ((m = /^Searching$/.test(head))) return `开始第 ${kv.search || '?'} 次搜索：${kv.query || ''}`;
+  if ((m = /^search (\d+) done/.exec(head))) return `第 ${m[1]} 次搜索完成：${kv.query || ''}`;
+  if (/^Waiting before next search/.test(head)) return `等待 ${Math.round(Number(kv.waitMs || 0) / 1000)} 秒后继续搜索`;
+  if (/^Search delay checked/.test(head)) return `搜索间隔检查：还需等 ${Math.round(Number(kv.waitMs || 0) / 1000)} 秒`;
+  if (/^batch pointsGained=/.test(head) || ('pointsGained' in kv)) {
+    return `本轮 +${kv.pointsGained || 0} 分 · 余额 ${kv.currentBalance || '—'}${kv.remaining ? ' · 还剩 ' + kv.remaining + ' 次' : ''}`;
+  }
+  if (/^Account balance observed/.test(head)) return `余额 ${kv.currentBalance || '—'}（开始时 ${kv.initialPoints || '—'}）`;
+  if (/^Account information observed/.test(head)) {
+    return `等级 ${kv.level || '—'} · 可用 ${kv.pointsProgress || '—'} · 距上限 ${kv.pointsRemaining || '—'} · 累计 ${kv.lifetimeEarn || '—'}`;
+  }
+  if (/^Quest progress/.test(head)) { const oid = String(kv.offerId || '—'); return `积分卡进度 ${kv.progress || '—'}（${oid.length > 26 ? oid.slice(0, 26) + '…' : oid}）`; }
+  if (/^Persisted live browser session/.test(head)) return `已保存登录会话（Cookie ${kv.cookies || 0} 个）`;
+  if (/^Browser context closed/.test(head)) return '浏览器已关闭';
+  if (/^Saving session/.test(head)) return `正在保存会话（Cookie ${kv.cookies || 0} 个）`;
+  if (/^Cluster ready/.test(head)) return `搜索词分组就绪：${kv.main || ''}${kv.candidates ? ' · 候选 ' + kv.candidates : ''}`;
+  if (/^Cluster activated/.test(head)) return `启用搜索词分组：${kv.main || ''} · 入队 ${kv.queued || 0}`;
+  if (/^Cluster exhausted/.test(head)) return `搜索词分组已用完：${kv.main || ''}`;
+  if (/^Query selected/.test(head)) return `选用搜索词：${kv.query || ''}`;
+  if (/^Fetching query source/.test(head)) return `获取搜索词来源：${kv.source || ''}`;
+  if (/^Refreshed cookie cache/.test(head)) return `刷新会话 Cookie（${kv.current || '—'} 个）`;
+  if (/^Applied (\d+) response cookie/.test(head)) return head.replace(/^Applied (\d+) response cookie\(s\).*/, '同步 $1 个响应 Cookie 并写入会话');
+  if (/^User data received/.test(head)) return `面板数据已更新 · 余额 ${kv.currentBalance || '—'}`;
+  const extra = _flatKv(kv);
+  return extra ? `${head}（${extra}）` : head;
+}
+
 async function loadLogs() {
   const d = await api('/logs?limit=400');
   const box = $('#logbox'), list = d.logs || [];
@@ -1375,14 +1456,25 @@ async function loadLogs() {
     let cls = 'l-dim';
     if (/err|fail/.test(lvl)) cls = 'l-err'; else if (/warn/.test(lvl)) cls = 'l-warn'; else if (/success|ok/.test(lvl)) cls = 'l-ok';
     line.append(el('span', 'l-time', `[${t}] `));
-    if (it.user) line.append(el('span', 'l-dim', `[${it.user}${it.platform ? ' ' + it.platform : ''}] `));
-    if (it.title) line.append(el('span', 'l-ok', `[${it.title}] `));
-    line.append(el('span', cls, it.message || it.raw || JSON.stringify(it)));
+    if (it.user) {
+      const uname = NOTES[String(it.user).split('@')[0]] || it.user;
+      const plat = ({DESKTOP: '桌面', MOBILE: '移动'})[String(it.platform || '').toUpperCase()] || it.platform || '';
+      line.append(el('span', 'l-dim', `[${uname}${plat ? ' ' + plat : ''}] `));
+    }
+    const zhOn = !$('#zhLog') || $('#zhLog').checked;
+    const zhTitle = LOG_TITLE_ZH[it.title] || it.title;
+    if (it.title) line.append(el('span', 'l-ok', `[${zhTitle || '日志'}] `));
+    const rawMsg = it.message || it.raw || JSON.stringify(it);
+    const shown = zhOn ? zhLogMessage(rawMsg) : rawMsg;
+    const msgEl = el('span', cls, shown);
+    msgEl.title = rawMsg;
+    line.append(msgEl);
     box.append(line);
   });
   if ($('#autoScroll').checked) box.scrollTop = box.scrollHeight;
 }
 $('#refreshLogs').onclick = loadLogs;
+if ($('#zhLog')) $('#zhLog').onchange = loadLogs;
 
 const TASK_LABELS = {
   doDesktopSearch: '桌面搜索',

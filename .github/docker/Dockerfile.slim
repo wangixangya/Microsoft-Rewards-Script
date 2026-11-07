@@ -1,0 +1,46 @@
+# 瘦身层：在「已打补丁的完整构建」之上删掉运行时用不到的东西
+#
+# 注意：这一层本身不会让镜像变小（删除只是白洞）。必须配合
+# .github/scripts/flatten-image.sh 拍扁成单层，最终体积才会降下来。
+#
+# 删什么（实测 1.34 GB → 763 MB）：
+#   - chromium-1248（403 MB）：容器无 DISPLAY、config.headless=true，
+#     BrowserRuntime 强制走 chromium_headless_shell-1248，完整 chromium 用不到
+#   - ffmpeg-1013（5 MB）：只用于录屏
+#   - typescript / @types / caniuse-lite（~31 MB）：dist 已是编译好的 JS
+#   - npm / yarn / corepack：容器只执行 node dist/index.js
+#   - /usr/share/doc、man、X11、多余字体；chromium 只留 zh-CN / en-US 语言包
+ARG BASE_IMAGE=local/msr:cn-build
+FROM ${BASE_IMAGE}
+
+RUN set -eux; \
+    cd /usr/src/microsoft-rewards-script; \
+    # 补丁必须已经进入编译产物，否则构建出来的镜像在国内依然是 0 分
+    grep -rq 'isBingHost' dist/ || { echo 'ERROR: dist 里没有 isBingHost，补丁没进构建'; exit 1; }; \
+    rm -rf node_modules/patchright-core/.local-browsers/chromium-1248 \
+           node_modules/patchright-core/.local-browsers/ffmpeg-1013 \
+           node_modules/typescript \
+           node_modules/@types \
+           node_modules/caniuse-lite \
+           node_modules/.cache \
+           /root/.npm /root/.cache; \
+    rm -rf /usr/local/lib/node_modules/npm \
+           /usr/local/lib/node_modules/corepack \
+           /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/yarn /usr/local/bin/yarnpkg; \
+    rm -rf /usr/share/doc /usr/share/man /usr/share/X11 /usr/share/fonts/X11; \
+    rm -rf /usr/share/fonts/opentype/ipafont-gothic \
+           /usr/share/fonts/opentype/unifont \
+           /usr/share/fonts/truetype/unifont \
+           /usr/share/fonts/truetype/freefont \
+           /usr/share/fonts/truetype/noto/NotoColorEmoji.ttf \
+           /usr/share/fonts/truetype/noto/NotoColorEmoji*; \
+    find node_modules/patchright-core/.local-browsers -type d -name locales -exec sh -c 'find "$1" -type f ! -name "zh-CN.pak" ! -name "en-US.pak" -delete' _ {} \; ; \
+    rm -rf node_modules/patchright-core/.local-browsers/*/chrome-headless-shell-linux64/swiftshader; \
+    # 瘦身后必须还能跑，缺文件立刻失败而不是等线上 0 分
+    test -x node_modules/patchright-core/.local-browsers/chromium_headless_shell-1248/chrome-linux/headless_shell; \
+    test -f dist/index.js; \
+    du -sh node_modules /usr/share/fonts /usr/local
+
+LABEL org.opencontainers.image.title="ms-rewards-v5-cn" \
+      org.opencontainers.image.description="Microsoft Rewards v5 (TheNetsky) + cn.bing.com patch + slim runtime (single layer)" \
+      cn.bing.patch="isBingHost() replaces strict www.bing.com origin equality in dist/"

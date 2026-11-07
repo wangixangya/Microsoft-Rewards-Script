@@ -1,7 +1,11 @@
 name: CN Patched Image
 
-# 在 v5 源码上打「cn.bing.com 兼容」补丁后构建镜像，产出 ghcr.io/<repo>:5-cn
-# 与上游 release 工作流并行、互不覆盖（只推 -cn 后缀标签，amd64 only，省一半时间）
+# 在 v5 源码上打「cn.bing.com 兼容」补丁，构建后**瘦身拍扁**再推送：
+#   ghcr.io/<repo>:5-cn 与 :<version>-cn   （单层，约 763 MB；完整版 1.34 GB）
+#
+# 瘦身两步走，顺序不能反（第二步才是真正减体积的那步）：
+#   1) .github/docker/Dockerfile.slim  删除 chromium-1248 / ffmpeg / npm / 文档字体等
+#   2) .github/scripts/flatten-image.sh export|import 拍扁成单层，否则删除只是白洞、体积不降
 
 on:
     push:
@@ -10,7 +14,9 @@ on:
             - 'src/**'
             - 'package.json'
             - 'package-lock.json'
-            - '.github/scripts/patch-bing-origin.js'
+            - 'Dockerfile'
+            - '.github/scripts/**'
+            - '.github/docker/**'
             - '.github/workflows/cn-image.yml'
     workflow_dispatch:
 
@@ -27,9 +33,9 @@ env:
 
 jobs:
     build:
-        name: Build CN-patched image
+        name: Build CN-patched slim image
         runs-on: ubuntu-24.04
-        timeout-minutes: 45
+        timeout-minutes: 60
         steps:
             - uses: actions/checkout@v4
               with:
@@ -61,19 +67,47 @@ jobs:
                   username: ${{ github.actor }}
                   password: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Build and push CN image
+            - name: Build full image (patched)
               uses: docker/build-push-action@v6
               with:
                   context: .
-                  push: true
+                  push: false
+                  load: true
                   platforms: linux/amd64
-                  tags: |
-                      ${{ env.IMAGE }}:5-cn
-                      ${{ env.IMAGE }}:${{ steps.ver.outputs.version }}-cn
+                  tags: local/msr:cn-build
                   cache-from: type=gha,version=2,scope=cn-image
                   cache-to: type=gha,version=2,scope=cn-image,mode=max
-                  labels: |
-                      org.opencontainers.image.source=https://github.com/${{ github.repository }}
-                      org.opencontainers.image.version=${{ steps.ver.outputs.version }}-cn
-                      org.opencontainers.image.revision=${{ github.sha }}
-                      com.wangixangya.patch=bing-origin-cn
+
+            - name: Strip runtime-unused files
+              run: |
+                  docker build \
+                    --build-arg BASE_IMAGE=local/msr:cn-build \
+                    --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+                    --label "org.opencontainers.image.version=${{ steps.ver.outputs.version }}-cn" \
+                    --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+                    --label "com.wangixangya.patch=bing-origin-cn" \
+                    -f .github/docker/Dockerfile.slim \
+                    -t local/msr:cn-slim .
+                  echo "瘦身层: $(docker image inspect local/msr:cn-slim --format '{{.Size}}' | awk '{printf "%.0f MB", $1/1024/1024}')（未拍扁，仍含白洞）"
+
+            - name: Flatten to a single layer
+              run: |
+                  chmod +x .github/scripts/flatten-image.sh
+                  .github/scripts/flatten-image.sh local/msr:cn-slim \
+                    "$IMAGE:5-cn" "$IMAGE:${{ steps.ver.outputs.version }}-cn"
+
+            - name: Push slim image
+              run: docker push --all-tags "$IMAGE"
+
+            - name: Report
+              run: |
+                  SIZE=$(docker image inspect "$IMAGE:5-cn" --format '{{.Size}}')
+                  MB=$(awk -v s="$SIZE" 'BEGIN{printf "%.0f", s/1024/1024}')
+                  echo "最终镜像: ${MB} MB（单层拍扁）"
+                  {
+                    echo "### 📦 CN 瘦身镜像已发布"
+                    echo ""
+                    echo "- \`$IMAGE:5-cn\`"
+                    echo "- \`$IMAGE:${{ steps.ver.outputs.version }}-cn\`"
+                    echo "- 体积: ${MB} MB（完整版约 1370 MB）"
+                  } >> "$GITHUB_STEP_SUMMARY"
