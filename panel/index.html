@@ -206,11 +206,8 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
       <button data-sec="acct">账号与会话</button>
       <button data-sec="logs">运行日志</button>
       <button data-sec="conf">任务配置</button>
-      <button data-sec="sched">运行计划</button>
-      <button data-sec="notify">推送渠道</button>
-      <button data-sec="update">镜像更新</button>
       <button data-sec="rewards">奖励中心</button>
-      <button data-sec="proxy">代理管理</button>
+      <button data-sec="settings">设置</button>
     </nav>
     <div class="side-foot">
       <div class="stat"><span>调度</span><span id="footSched">—</span></div>
@@ -360,6 +357,39 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
         </div>
         <textarea id="jsonBox" rows="20" spellcheck="false"></textarea>
         <div class="hint" style="margin-top:8px">保存自动备份为 config.json.bak，改动下次运行生效。</div>
+      </div>
+    </div>
+
+    <div class="sec" id="sec-settings">
+      <div class="card">
+        <div class="card-h"><h3>设置</h3><span class="hint">运行计划 / 推送 / 代理 / 版本都在这里</span></div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:4px">
+          <button class="btn" data-open="sched" style="text-align:left;padding:14px 16px;height:auto">
+            <div style="font-weight:600;margin-bottom:4px">运行计划</div>
+            <div class="hint" style="font-weight:400">每日自动运行时间、并发数、账号独立任务</div>
+          </button>
+          <button class="btn" data-open="notify" style="text-align:left;padding:14px 16px;height:auto">
+            <div style="font-weight:600;margin-bottom:4px">推送渠道</div>
+            <div class="hint" style="font-weight:400">运行结束通知、每日汇总、频道配置</div>
+          </button>
+          <button class="btn" data-open="proxy" style="text-align:left;padding:14px 16px;height:auto">
+            <div style="font-weight:600;margin-bottom:4px">代理管理</div>
+            <div class="hint" style="font-weight:400">长效 SOCKS5 / HTTP 代理，按账号绑定</div>
+          </button>
+          <button class="btn" data-open="update" style="text-align:left;padding:14px 16px;height:auto">
+            <div style="font-weight:600;margin-bottom:4px">镜像与版本</div>
+            <div class="hint" style="font-weight:400">检查官方更新、重建镜像、面板自更新</div>
+          </button>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><h3>面板信息</h3></div>
+        <table><tbody>
+          <tr><td class="k">面板版本</td><td id="setVer">—</td></tr>
+          <tr><td class="k">运行镜像</td><td id="setImage">—</td></tr>
+          <tr><td class="k">调度</td><td id="setSched">—</td></tr>
+          <tr><td class="k">并发</td><td id="setClusters">—</td></tr>
+        </tbody></table>
       </div>
     </div>
 
@@ -600,23 +630,68 @@ async function doLogin() {
 }
 $('#logoutBtn').onclick = async () => { await fetch('/logout', {method: 'POST'}); location.reload(); };
 
-document.querySelectorAll('nav button').forEach(b => {
-  b.onclick = () => {
-    document.querySelectorAll('nav button').forEach(x => x.classList.remove('on'));
-    b.classList.add('on');
-    document.querySelectorAll('.sec').forEach(s => s.classList.remove('on'));
-    $('#sec-' + b.dataset.sec).classList.add('on');
-    $('#pageTitle').textContent = b.textContent;
-    if (b.dataset.sec === 'logs') loadLogs();
-    if (b.dataset.sec === 'conf') loadConfig();
-    if (b.dataset.sec === 'sched') loadSched();
-    if (b.dataset.sec === 'notify') loadNotify();
-    if (b.dataset.sec === 'acct') loadAccounts();
-    if (b.dataset.sec === 'update') loadUpdate();
-    if (b.dataset.sec === 'rewards') { initRewardAccounts(); loadRewardsConf(); loadRewards(); }
-    if (b.dataset.sec === 'proxy') loadProxies();
-  };
-});
+const SEC_LABEL = {dash: '总览', acct: '账号与会话', logs: '运行日志', conf: '任务配置',
+                   rewards: '奖励中心', settings: '设置', sched: '运行计划',
+                   notify: '推送渠道', proxy: '代理管理', update: '镜像与版本'};
+const SETTINGS_SUBS = ['sched', 'notify', 'proxy', 'update'];
+
+function navButtonFor(sec) {
+  return document.querySelector(`nav button[data-sec="${SETTINGS_SUBS.includes(sec) ? 'settings' : sec}"]`);
+}
+
+function showSection(sec) {
+  document.querySelectorAll('.sec').forEach(s => s.classList.remove('on'));
+  const box = $('#sec-' + sec);
+  if (box) box.classList.add('on');
+  const nav = navButtonFor(sec);
+  document.querySelectorAll('nav button').forEach(x => x.classList.remove('on'));
+  if (nav) nav.classList.add('on');
+  $('#pageTitle').textContent = SEC_LABEL[sec] || sec;
+
+  // 从设置进入的子页：顶部放一个返回条（只建一次）
+  if (SETTINGS_SUBS.includes(sec) && box) {
+    if (!box.querySelector('.backbar')) {
+      const bar = document.createElement('div');
+      bar.className = 'backbar';
+      bar.style.cssText = 'margin-bottom:14px';
+      const btn = document.createElement('button');
+      btn.className = 'btn sm';
+      btn.textContent = '← 返回设置';
+      btn.onclick = () => showSection('settings');
+      bar.append(btn);
+      box.prepend(bar);
+    }
+  }
+
+  if (sec === 'logs') loadLogs();
+  if (sec === 'conf') loadConfig();
+  if (sec === 'sched') loadSched();
+  if (sec === 'notify') loadNotify();
+  if (sec === 'acct') loadAccounts();
+  if (sec === 'update') loadUpdate();
+  if (sec === 'rewards') { initRewardAccounts(); loadRewardsConf(); loadRewards(); }
+  if (sec === 'proxy') loadProxies();
+  if (sec === 'settings') loadSettingsInfo();
+}
+
+async function loadSettingsInfo() {
+  try {
+    const v = await papi('/panel/version');
+    $('#setVer').textContent = `v${v.version} · ${v.build}`;
+    $('#setSched').textContent = v.schedule?.enabled ? v.schedule.cron : '关闭';
+  } catch (e) {}
+  try {
+    const c = await papi('/panel/clusters');
+    $('#setClusters').textContent = `${c.clusters} 并发 · ${c.accounts} 个账号`;
+  } catch (e) {}
+  try {
+    const u = await papi('/panel/update/status');
+    $('#setImage').textContent = (u.container || '—');
+  } catch (e) {}
+}
+
+document.querySelectorAll('nav button').forEach(b => { b.onclick = () => showSection(b.dataset.sec); });
+document.querySelectorAll('[data-open]').forEach(b => { b.onclick = () => showSection(b.dataset.open); });
 
 async function loadStatus() {
   try {
