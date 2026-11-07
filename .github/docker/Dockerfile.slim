@@ -37,7 +37,7 @@ RUN set -eux; \
     find node_modules/patchright-core/.local-browsers -type d -name locales -exec sh -c 'find "$1" -type f ! -name "zh-CN.pak" ! -name "en-US.pak" -delete' _ {} \; ; \
     rm -rf node_modules/patchright-core/.local-browsers/*/chrome-headless-shell-linux64/swiftshader; \
     # 瘦身后必须还能跑，缺文件立刻失败而不是等线上 0 分
-    test -x node_modules/patchright-core/.local-browsers/chromium_headless_shell-1248/chrome-linux/headless_shell; \
+    test -x node_modules/patchright-core/.local-browsers/chromium_headless_shell-1248/chrome-headless-shell-linux64/chrome-headless-shell; \
     test -f dist/index.js; \
     du -sh node_modules /usr/share/fonts /usr/local
 
