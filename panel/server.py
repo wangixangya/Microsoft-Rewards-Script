@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote, quote
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 CONF = os.path.join(BASE, "panel.conf")
@@ -309,7 +309,19 @@ def collector_loop():
                             continue
                     raw = e.get("raw") or e.get("message")
                     if raw:
-                        new_lines.append({"id": eid, "t": et, "raw": raw})
+                        item = {"id": eid, "t": et, "raw": raw}
+                        # v5 控制 API 给的是结构化日志：把归一等价字段一并落盘，
+                        # stats.py 优先按结构化解析（raw 只作兜底）
+                        if e.get("title"):
+                            item.update({
+                                "ti": str(e.get("title") or ""),
+                                "msg": str(e.get("message") or ""),
+                                "u": str(e.get("user") or ""),
+                                "p": str(e.get("platform") or ""),
+                                "lv": str(e.get("level") or ""),
+                                "ts": str(e.get("ts") or ""),
+                            })
+                        new_lines.append(item)
                     if eid > last_id:
                         last_id = eid
                     if et > last_t:
@@ -674,15 +686,17 @@ class Handler(BaseHTTPRequestHandler):
                 per = {}
                 for d in days:
                     for name, v in (d.get("accounts") or {}).items():
-                        e = per.setdefault(name, {"d7": 0, "balance": None})
+                        k = str(name).split("@")[0]
+                        e = per.setdefault(k, {"d7": 0, "balance": None})
                         e["d7"] += int(v.get("total") or 0)
                         if v.get("balance") is not None:
-                            e["balance"] = v.get("balance")
+                            e["balance"] = v["balance"]
+                today_norm = {str(k).split("@")[0]: v for k, v in (today or {}).items()}
                 for a in accs:
                     key = str(a.get("email") or "").split("@")[0]
                     info = per.get(key) or {}
                     a["balance"] = info.get("balance")
-                    a["todayPoints"] = int((today.get(key) or {}).get("total") or 0)
+                    a["todayPoints"] = int((today_norm.get(key) or {}).get("total") or 0)
                     a["points7d"] = info.get("d7", 0)
             except Exception as e:
                 log("[panel] 账号统计补全失败", e)
@@ -876,6 +890,27 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(400, res)
             res["rebuild"] = run_rebuild()
             return self.send_json(200, res)
+
+        if method == "DELETE" and p.startswith("/api/sessions/"):
+            # v5 的会话删除是「按账号整删」（桌面+移动一起），没有按平台的删除接口；
+            # 前端仍可能带 ?platform=xxx，这里丢掉该参数并统一走整号删除。
+            email = unquote(p[len("/api/sessions/"):]).strip()
+            if not email:
+                return self.send_json(400, {"error": "缺少邮箱"})
+            code, resp = api_call("DELETE", "/sessions/" + quote(email, safe=""), None, timeout=30)
+            try:
+                data = json.loads(resp) if resp else {}
+            except Exception:
+                data = {"raw": resp.decode("utf-8", "replace") if isinstance(resp, bytes) else str(resp)}
+            if code < 400 and isinstance(data, dict):
+                data["note"] = "v5 按账号整删：该号的桌面与移动会话都已清除"
+            out = json.dumps(data, ensure_ascii=False).encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+            return
 
         if p.startswith("/api/"):
             target = p[4:] + (("?" + u.query) if u.query else "")

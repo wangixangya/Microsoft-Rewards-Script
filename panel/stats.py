@@ -47,18 +47,57 @@ def new_acct():
             "checkin": 0, "punch": 0, "bonus": 0}
 
 
-def parse_lines(lines):
+ISO_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})")
+# v5 控制 API 的结构化日志（runlog.jsonl 里带 ti/msg 字段）
+V5_FIELDS = ("ti", "msg", "u", "p", "ts")
+
+
+def _v5_record(obj):
+    """把一条 v5 结构化日志归一化成 (date, user, platform, title, msg, hh, mi, ss)。"""
+    ts = str(obj.get("ts") or obj.get("t") or "")
+    m = ISO_RE.match(ts)
+    if not m:
+        return None
+    yr, mo, da, hh, mi, ss = (int(x) for x in m.groups())
+    # 控制 API 的 ts 是 UTC（Z），统计口径要本地东八区
+    try:
+        dt = datetime(yr, mo, da, hh, mi, ss, tzinfo=timezone.utc).astimezone(TZ)
+    except Exception:
+        return None
+    user = str(obj.get("u") or "").strip()
+    # v5 的 user 是完整邮箱（v4 是本地部分），统计口径统一取本地部分，避免同号出现两条
+    if "@" in user:
+        user = user.split("@")[0]
+    platform = str(obj.get("p") or "").strip()
+    title = str(obj.get("ti") or "").strip()
+    msg = str(obj.get("msg") or "")
+    if not title or not user:
+        return None
+    return (dt.date().isoformat(), user, platform, title, msg, dt.hour, dt.minute, dt.second)
+
+
+def parse_lines(lines, records=None):
+    """lines = v4 原始文本行；records = v5 结构化日志 dict 列表（优先）。"""
     days = defaultdict(lambda: defaultdict(new_acct))
     read_seen = set()
+
+    parsed = []
+    for obj in records or []:
+        r = _v5_record(obj)
+        if r:
+            parsed.append(r)
     for line in lines:
         m = LINE_RE.match(line.strip())
         if not m:
             continue
         mo, da, yr, hh, mi, ss, ap, user, level, platform, title, msg = m.groups()
-        if user in ("MAIN", "API"):
-            continue
         hh = int(hh) % 12 + (12 if ap == "PM" else 0)
         date = f"{int(yr):04d}-{int(mo):02d}-{int(da):02d}"
+        parsed.append((date, user, platform, title, msg, hh, int(mi), int(ss)))
+
+    for date, user, platform, title, msg, hh, mi, ss in parsed:
+        if user in ("MAIN", "API", ""):
+            continue
         rec = days[date][user]
 
         if title == "ACCOUNT-END":
@@ -68,9 +107,19 @@ def parse_lines(lines):
                 rec["total"] += int(mp.group(1))
             if mb:
                 rec["balance"] = int(mb.group(1))
-            if "Completed account:" in msg:
-                rec["email"] = msg.split("Completed account:")[-1].split("|")[0].strip()
-            rec["lastRunAt"] = f"{date}T{hh:02d}:{mi}:{ss}"
+            for marker in ("Finished account:", "Completed account:"):
+                if marker in msg:
+                    rec["email"] = msg.split(marker)[-1].split("|")[0].strip()
+                    break
+            rec["lastRunAt"] = f"{date}T{hh:02d}:{mi:02d}:{ss:02d}"
+            continue
+
+        # v5 的 FLOW 汇总行带 account=，用来兜底补余额（pointsGained 可能是 0）
+        if title == "FLOW" and "Points collected" in msg:
+            mb = re.search(r"currentBalance=(\d+)", msg)
+            if mb:
+                rec["balance"] = int(mb.group(1))
+                rec.setdefault("email", user)
             continue
 
         mp = re.search(r"pointsGained=(-?\d+)", msg)
@@ -80,9 +129,9 @@ def parse_lines(lines):
         if n <= 0:
             continue
 
-        if title == "URL-REWARD":
+        if title in ("URL-REWARD", "ACTIVITY-REWARD"):
             mid = re.search(r"offerId=([^\s|]+)", msg)
-            oid = mid.group(1) if mid else f"{title}-{mo}{da}-{mi}{ss}-{n}"
+            oid = mid.group(1) if mid else f"{title}-{date}-{mi}{ss}-{n}"
             cat = "dailySet" if "DailySet" in oid else "promotions"
             key = (cat, oid)
             rec["offers"][key] = max(rec["offers"].get(key, 0), n)
@@ -90,13 +139,13 @@ def parse_lines(lines):
             rec["offers"][("checkin", f"{date}-{platform}")] = max(
                 rec["offers"].get(("checkin", f"{date}-{platform}"), 0), n)
         elif title == "READ-TO-EARN":
-            if msg.startswith("Completed Read to Earn"):
+            if msg.startswith("Completed Read to Earn") or "Read to Earn" in msg:
                 k = (date, user)
                 if k not in read_seen:
                     read_seen.add(k)
                     rec["read"] = max(rec["read"], n)
         elif title == "SEARCH-BING":
-            if "Completed Bing searches" in msg:
+            if "Completed Bing searches" in msg or "Search summary" in msg:
                 continue
             pk = "searchDesktop" if platform == "DESKTOP" else "searchMobile"
             rec["search"][pk] += n
@@ -132,7 +181,9 @@ def acct_tasks(rec):
 
 
 def collect_lines():
+    """返回 (v4 原始文本行, v5 结构化记录)。runlog.jsonl 里 v5 条目带 ti/msg 字段。"""
     lines = []
+    records = []
     for path in (ARCHIVE,):
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -142,15 +193,17 @@ def collect_lines():
             for ln in f:
                 try:
                     obj = json.loads(ln)
-                    if obj.get("raw"):
-                        lines.append(str(obj["raw"]) + "\n")
                 except Exception:
                     continue
-    return lines
+                if obj.get("ti"):
+                    records.append(obj)
+                elif obj.get("raw"):
+                    lines.append(str(obj["raw"]) + "\n")
+    return lines, records
 
 
 def build(days=14):
-    raw = parse_lines(collect_lines())
+    raw = parse_lines(*collect_lines())
     today = datetime.now(TZ).date()
     out_days = []
     for i in range(days - 1, -1, -1):

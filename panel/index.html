@@ -314,7 +314,13 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
         <tbody id="acctTable"></tbody></table>
       </div>
       <div class="card">
-        <div class="card-h"><h3>登录会话（Cookie）</h3><span class="hint">失效时删除会话，下次运行自动重登</span></div>
+        <div class="card-h">
+          <h3>登录会话（Cookie）</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="hint">失效时删除会话，下次运行自动重登（v5 按账号整删）</span>
+            <button class="btn sm" id="regenBtn">重新生成会话</button>
+          </div>
+        </div>
         <table><thead><tr><th>邮箱</th><th>平台</th><th>Cookie 数</th><th>更新时间</th><th></th></tr></thead>
         <tbody id="sessTable"></tbody></table>
       </div>
@@ -783,8 +789,7 @@ async function loadAccounts() {
         const r = await fetch(`/panel/accounts?index=${envRow.index}`, {method: 'DELETE'});
         const j = await r.json();
         if (j.error) { flash(j.error, true); b.disabled = false; b.textContent = '删除账号'; return; }
-        try { await api(`/sessions/${encodeURIComponent(a.email)}?platform=desktop`, {method: 'DELETE'}); } catch (e) {}
-        try { await api(`/sessions/${encodeURIComponent(a.email)}?platform=mobile`, {method: 'DELETE'}); } catch (e) {}
+        try { await api(`/sessions/${encodeURIComponent(a.email)}`, {method: 'DELETE'}); } catch (e) {}
         flash('已删除 ' + a.email);
         loadAccounts(); loadStats();
       };
@@ -807,12 +812,21 @@ async function loadAccounts() {
       el('td', 'mono', x.updatedAt ? new Date(x.updatedAt).toLocaleString('zh-CN') : '—'));
     const td = el('td'), b = el('button', 'btn sm danger', '删除');
     b.onclick = async () => {
-      if (!confirm(`删除 ${x.email} 的 ${x.platform} 会话？下次运行需重新登录。`)) return;
-      await api(`/sessions/${encodeURIComponent(x.email)}?platform=${x.platform}`, {method: 'DELETE'});
-      flash('会话已删除'); loadAccounts();
+      if (!confirm(`删除 ${x.email} 的会话？\n（v5 按账号整删：该号的桌面 + 移动会话都会清除，下次运行需重新登录）`)) return;
+      const r = await api(`/sessions/${encodeURIComponent(x.email)}`, {method: 'DELETE'});
+      flash(r.error ? ('删除失败：' + r.error) : '会话已删除');
+      loadAccounts();
     };
     td.append(b); tr.append(td); sb.append(tr);
   });
+  const rgBtn = $('#regenBtn');
+  if (rgBtn) rgBtn.onclick = async () => {
+    if (!confirm('重新生成所有账号的登录会话？\n会启动一个独立的浏览器登录任务（不跑积分），约 2-5 分钟。')) return;
+    rgBtn.disabled = true; rgBtn.textContent = '生成中…';
+    const r = await api('/sessions/regenerate', {method: 'POST', body: '{}'});
+    flash(r.error ? ('发起失败：' + r.error) : '已发起会话重建，进度见日志');
+    rgBtn.disabled = false; rgBtn.textContent = '重新生成会话';
+  };
 }
 
 $('#addAcctBtn').onclick = async () => {
