@@ -322,7 +322,7 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
       </div>
       <div class="card" style="margin-bottom:14px">
         <div class="card-h"><h3>账号信息</h3></div>
-        <table><thead><tr><th>#</th><th>邮箱</th><th>区域</th><th>累计积分</th><th>连续成功</th><th>上次运行</th><th>状态</th><th></th></tr></thead>
+        <table><thead><tr><th>#</th><th>邮箱</th><th>区域</th><th>备注</th><th>累计积分</th><th>连续成功</th><th>上次运行</th><th>状态</th><th></th></tr></thead>
         <tbody id="acctTable"></tbody></table>
       </div>
       <div class="card">
@@ -506,7 +506,7 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
 
       <div class="card" style="margin-top:14px">
         <div class="card-h"><h3>账号独立任务</h3><span class="hint">每个账号可单独定时 / 单独立即运行</span></div>
-        <table><thead><tr><th>#</th><th>账号</th><th>独立计划</th><th>Cron</th><th>操作</th></tr></thead>
+        <table><thead><tr><th>#</th><th>账号</th><th>备注</th><th>独立计划</th><th>Cron</th><th>操作</th></tr></thead>
         <tbody id="acctSched"></tbody></table>
         <div style="margin-top:14px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
           <button class="btn primary" id="saveAcctSched">保存账号计划</button>
@@ -676,6 +676,7 @@ let _lastStats = 0, _prevState = null;   // 收益自动刷新的时间戳 / 上
 const $ = s => document.querySelector(s);
 const el = (t, cls, txt) => { const e = document.createElement(t); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
 let STATS = null, RANGE = 7, FILTER = 'all', timer = null, ACCTS = [];
+let NOTES = {};   // 账号备注：{ 本地部分或邮箱: '备注' }
 
 function flash(msg, bad) {
   const f = $('#flash'); f.textContent = msg;
@@ -886,7 +887,7 @@ async function fillRunAcct() {
     if (!sel) return;
     const cur = sel.value;
     sel.innerHTML = '<option value="">全部账号</option>' +
-      (d.accounts || []).map(a => `<option value="${a.email}">${a.email}</option>`).join('');
+      (d.accounts || []).map(a => `<option value="${a.email}">${a.note ? a.note + '（' + a.email + '）' : a.email}</option>`).join('');
     if (cur) sel.value = cur;
   } catch (e) {}
 }
@@ -981,7 +982,7 @@ function renderAcctSeg() {
     return b;
   };
   box.append(mk('all', '全部账号'));
-  ACCTS.forEach(a => box.append(mk(a, a)));
+  ACCTS.forEach(a => box.append(mk(a, NOTES[a] ? `${a} · ${NOTES[a]}` : a)));
 }
 
 function dayTotal(d) {
@@ -1228,7 +1229,14 @@ async function loadAccounts() {
     if (r.ok) ENV = (await r.json()).accounts || [];
   } catch (e) {}
   const byEmail = {};
-  ENV.forEach(x => byEmail[String(x.email).toLowerCase()] = x);
+  NOTES = {};
+  ENV.forEach(x => {
+    byEmail[String(x.email).toLowerCase()] = x;
+    const key = String(x.email).split('@')[0];
+    if (x.note) { NOTES[key] = x.note; NOTES[String(x.email).toLowerCase()] = x.note; }
+  });
+  if (typeof renderAcctSeg === 'function' && STATS) renderAcctSeg();
+  if (typeof fillRunAcct === 'function') fillRunAcct();
 
   // 以「配置里的账号」为主表（后端已并入 balance/today/7d），再用 API 的内存态补连续成功/上次运行；
   // 反过来用 API 当主表的话，容器一重建累计积分就全变 0。
@@ -1254,7 +1262,25 @@ async function loadAccounts() {
     }
     const balTd = el('td');
     balTd.innerHTML = nf(collected) + (a.todayPoints ? ` <span class="hint">今日 +${a.todayPoints}</span>` : '');
+    const noteTd = el('td');
+    const ni = document.createElement('input');
+    ni.type = 'text';
+    ni.value = a.note || '';
+    ni.placeholder = '备注';
+    ni.maxLength = 40;
+    ni.style.cssText = 'width:110px';
+    ni.onblur = async () => {
+      try {
+        await papi('/panel/accounts/note', {method: 'POST', body: JSON.stringify({index: a.index, note: ni.value})});
+        NOTES[shortName] = ni.value;
+        flash('备注已保存');
+        if (STATS) renderAcctSeg();
+      } catch (e) { flash('备注保存失败', true); }
+    };
+    noteTd.append(ni);
+
     tr.append(el('td', '', String(a.index)), el('td', 'mono', a.email), el('td', '', a.geoLocale || '—'),
+      noteTd,
       balTd,
       el('td', '', String(a.successStreak ?? 0)),
       el('td', 'mono', a.lastRunAt ? new Date(a.lastRunAt).toLocaleString('zh-CN') : '—'));
@@ -1472,6 +1498,7 @@ async function renderAcctSched() {
   tb.innerHTML = accs.map(a => {
     const t = tasks[a.index] || {};
     return `<tr><td>${a.index}</td><td>${a.email}</td>
+      <td><input type="text" data-acctnote="${a.index}" value="${(a.note || '').replace(/"/g,'&quot;')}" placeholder="备注，如 主力号" maxlength="40" style="width:130px"></td>
       <td><span class="sw ${t.enabled ? 'on' : ''}" data-acctsw="${a.index}" style="display:inline-block"></span></td>
       <td><input type="text" data-acctcron="${a.index}" value="${t.cron || ''}" placeholder="留空=不独立跑" style="width:150px"></td>
       <td style="white-space:nowrap"><button class="btn sm" data-acctrun="${a.index}">立即运行</button>
@@ -1480,6 +1507,18 @@ async function renderAcctSched() {
   }).join('') || '<tr><td colspan="5" class="hint">没有账号</td></tr>';
   tb.querySelectorAll('[data-acctsw]').forEach(sw => sw.onclick = () => {
     sw.classList.toggle('on');
+  });
+  tb.querySelectorAll('[data-acctnote]').forEach(inp => {
+    const save = async () => {
+      const idx = Number(inp.dataset.acctnote);
+      try {
+        await papi('/panel/accounts/note', {method: 'POST', body: JSON.stringify({index: idx, note: inp.value})});
+        inp.style.borderColor = '#16a34a';
+        setTimeout(() => { inp.style.borderColor = ''; }, 1200);
+      } catch (e) { flash('备注保存失败', true); }
+    };
+    inp.addEventListener('blur', save);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { inp.blur(); } });
   });
   tb.querySelectorAll('[data-acctsec]').forEach(b => b.onclick = async () => {
     const idx = Number(b.dataset.acctsec);

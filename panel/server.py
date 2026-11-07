@@ -1058,6 +1058,29 @@ def notify_loop():
                 last = st.get("lastExit") or {}
                 code_exit = last.get("code")
                 score, text = build_summary()
+                # —— 连续失败 / 连续 0 分告警（状态落盘，重启不清零） ——
+                try:
+                    as_ = load_json(ALERT_FILE, {"fails": 0, "zeros": 0, "failAlerted": False, "zeroAlerted": False})
+                    bad = code_exit not in (0, None, 143)
+                    as_["fails"] = as_.get("fails", 0) + 1 if bad else 0
+                    as_["zeros"] = as_.get("zeros", 0) + 1 if (score or 0) == 0 else 0
+                    if bad and as_["fails"] >= 2 and not as_.get("failAlerted"):
+                        notifymod.broadcast("Rewards 连续运行失败",
+                                            f"已连续 {as_['fails']} 次异常退出（最近退出码 {code_exit}）\n{text}")
+                        as_["failAlerted"] = True
+                        log(f"[notify] 连续失败告警（{as_['fails']} 次）")
+                    if as_["fails"] == 0:
+                        as_["failAlerted"] = False
+                    if (score or 0) == 0 and as_["zeros"] >= 2 and not as_.get("zeroAlerted"):
+                        notifymod.broadcast("Rewards 连续 0 分",
+                                            f"已连续 {as_['zeros']} 次运行没有得分，检查登录/地区/配额\n{text}")
+                        as_["zeroAlerted"] = True
+                        log(f"[notify] 连续 0 分告警（{as_['zeros']} 次）")
+                    if (score or 0) > 0:
+                        as_["zeroAlerted"] = False
+                    save_json(ALERT_FILE, as_)
+                except Exception as _e:
+                    log("[notify] 告警状态处理异常", _e)
                 if code_exit not in (0, None, 143):
                     if ev.get("on_error", True):
                         t = "Rewards 运行异常退出"
@@ -1357,6 +1380,24 @@ def remote_status():
 
 # ---------------------------------------------------------------- 系统状态 / 运行历史 / 备份 / JS 重建
 RUNS_FILE = os.path.join(BASE, "runs.json")
+NOTES_FILE = os.path.join(BASE, "accounts.json")
+ALERT_FILE = os.path.join(BASE, "alert-state.json")
+
+
+def notes_load():
+    try:
+        d = json.load(open(NOTES_FILE))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def notes_save(d):
+    tmp = NOTES_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, NOTES_FILE)
+
 BACKUP_DIR = os.path.join(BASE, "backups")
 JS_LOG = "/root/.hermes/logs/ms-js-build.log"
 JS_SCRIPT = os.path.join(BASE, "ql", "build-single-v5.sh")
@@ -1881,6 +1922,9 @@ class Handler(BaseHTTPRequestHandler):
                         a["lastRunAt"] = h["lastRunAt"]
             except Exception as e:
                 log("[panel] 账号统计补全失败", e)
+            _notes = notes_load()
+            for a in accs:
+                a["note"] = _notes.get(str(a.get("index")), "")
             return self.send_json(200, {"accounts": accs, "state": run_state()})
 
         if p == "/panel/stats":
@@ -2028,6 +2072,23 @@ class Handler(BaseHTTPRequestHandler):
             ok = start_js_build()
             return self.send_json(202 if ok else 409,
                                   {"ok": ok, "message": "已开始重建 JS 单文件" if ok else "已在重建中"})
+
+        if p == "/panel/accounts/note":
+            try:
+                _pl = json.loads(body or b"{}")
+            except Exception:
+                return self.send_json(400, {"error": "bad json"})
+            idx = str(int(_pl.get("index") or 0))
+            if not any(str(a["index"]) == idx for a in env_accounts()):
+                return self.send_json(400, {"error": f"账号 {idx} 不存在"})
+            note = str(_pl.get("note") or "").strip()[:40]
+            d = notes_load()
+            if note:
+                d[idx] = note
+            else:
+                d.pop(idx, None)
+            notes_save(d)
+            return self.send_json(200, {"ok": True, "index": int(idx), "note": note})
 
         if p == "/panel/accounts/secret":
             try:
