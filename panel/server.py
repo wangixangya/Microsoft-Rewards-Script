@@ -683,6 +683,9 @@ def collector_loop():
 # ---------- 账号管理（env.list） ----------
 ENVFILE = os.path.join(BASE, "env.list")
 RECREATE = CONF_D.get("RECREATE_SCRIPT") or os.path.join(os.path.dirname(BASE), "recreate_ms.sh")
+# 面板重建容器时必须显式传镜像：recreate_ms.sh 的默认值是 v4.3.3，
+# 不传就会把 v5 容器悄悄降级回 v4（2026-11-07 踩过）。
+PANEL_IMAGE = CONF_D.get("IMAGE") or "ms-rewards:v5-cn"
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -908,9 +911,33 @@ def test_proxy(p, timeout=18):
             "httpCode": code, "detail": out[:120], "proxy": url.replace(auth, "***@") if auth else url}
 
 
+def set_env_key(key, value):
+    """设置/覆盖 env.list 里某个全局键（如 CONFIG_CLUSTERS）。"""
+    lines = [ln for ln in env_lines() if not re.match(rf"^{re.escape(key)}=", ln)]
+    if value is not None and str(value) != "":
+        lines.append(f"{key}={value}")
+    _backup_env()
+    _write_env(lines)
+
+
+def get_env_key(key, default=""):
+    for ln in env_lines():
+        m = re.match(rf"^{re.escape(key)}=(.*)$", ln)
+        if m:
+            return m.group(1).strip()
+    return default
+
+
+def set_clusters(n):
+    """clusters = 同时跑几个账号（v5 原生 cluster 支持，每个 worker 一个账号分片）。"""
+    n = max(1, min(4, int(n)))
+    set_env_key("CONFIG_CLUSTERS", n)
+    return n
+
+
 def run_rebuild(timeout=300):
     try:
-        p = subprocess.run(["bash", RECREATE], capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(["bash", RECREATE, PANEL_IMAGE], capture_output=True, text=True, timeout=timeout)
         return {"code": p.returncode,
                 "out": (p.stdout or "").strip()[-1200:],
                 "err": (p.stderr or "").strip()[-600:]}
@@ -1165,6 +1192,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, {"version": VERSION, "build": BUILD_DATE,
                                         "schedule": load_json(SCHED, {})})
 
+        if p == "/panel/clusters":
+            return self.send_json(200, {"clusters": int(get_env_key("CONFIG_CLUSTERS", "1") or 1),
+                                        "accounts": len(env_accounts())})
+
         if p == "/panel/notify":
             import notify as notifymod
             safe = notifymod.load()
@@ -1296,6 +1327,19 @@ class Handler(BaseHTTPRequestHandler):
 
         if not self.authed():
             return self.send_json(401, {"error": "unauthorized"})
+
+        if p == "/panel/clusters":
+            try:
+                payload = json.loads(body or b"{}")
+            except Exception:
+                return self.send_json(400, {"error": "bad json"})
+            if run_state() == "running":
+                return self.send_json(409, {"error": "任务正在运行，先停止再改并发"})
+            try:
+                n = set_clusters(int(payload.get("clusters") or 1))
+            except Exception:
+                return self.send_json(400, {"error": "并发数需要是 1–4"})
+            return self.send_json(200, {"ok": True, "clusters": n, "rebuild": run_rebuild()})
 
         if p == "/panel/run":
             try:
