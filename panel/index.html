@@ -1244,7 +1244,7 @@ async function loadAccounts() {
     const key = String(x.email).split('@')[0];
     if (x.note) { NOTES[key] = x.note; NOTES[String(x.email).toLowerCase()] = x.note; }
   });
-  if (typeof renderAcctSeg === 'function' && STATS) renderAcctSeg();
+  if (STATS) { renderAcctSeg(); renderCompare(); renderRecent(); }
   if (typeof fillRunAcct === 'function') fillRunAcct();
 
   // 以「配置里的账号」为主表（后端已并入 balance/today/7d），再用 API 的内存态补连续成功/上次运行；
