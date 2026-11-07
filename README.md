@@ -63,6 +63,26 @@
 - **账号走环境变量**：`ACCOUNT_1_EMAIL` / `ACCOUNT_1_PASSWORD` / `ACCOUNT_1_TOTP_SECRET`，密码不落盘
 - **自检**：`MSR_SELFTEST=1 node ms-rewards.js` 只验证依赖 + 浏览器 + 访问必应，不跑任务
 
+### 方式 ①：单文件版（推荐，零安装）★
+
+把「dist + node_modules」压进一个文件里（33 MB），青龙里直接跑，**不需要 npm install，也不需要联网装依赖**：
+
+```bash
+# 下载（GitHub Release）
+cd /ql/data/scripts && \
+curl -L -o ms-rewards-single.js \
+  https://github.com/wangixangya/Microsoft-Rewards-Script/releases/download/ql-single/ms-rewards-single.js
+
+# 首次运行会自解包到 /ql/data/msr/app（约 3 秒），之后复用
+node ms-rewards-single.js
+MSR_SELFTEST=1 node ms-rewards-single.js   # 环境自检
+```
+
+- 内嵌包同时带 **glibc / musl 两版 impit**：Debian 镜像和 Alpine 青龙都能用
+- 浏览器优先用系统 `/usr/bin/chromium`（Alpine 青龙自带），找不到才提示另装
+- 解包目录可用 `MSR_HOME` 改；`MSR_FORCE_EXTRACT=1` 强制重新解包
+- 国内下载 GitHub Release 慢的话，把 URL 前加镜像前缀，例如 `https://ghfast.top/` 包一层
+
 ### 拉取到青龙面板（三种方式）
 
 **① 面板上传（最省事）** — 左下「脚本管理」→ 新建文件夹 `msr` → 上传 `ms-rewards.js` → 保存。
