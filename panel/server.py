@@ -3,11 +3,13 @@
 只用标准库，无第三方依赖。监听 0.0.0.0:5310。
 """
 import base64
+import datetime
 import hashlib
 import hmac
 import json
 import os
 import re
+import subprocess
 import threading
 import time
 import urllib.error
@@ -20,6 +22,145 @@ CONF = os.path.join(BASE, "panel.conf")
 SCHED = os.path.join(BASE, "schedule.json")
 STATE = os.path.join(BASE, "state.json")
 PORT = int(os.environ.get("PANEL_PORT", "5310"))
+
+
+def run_history_today():
+    """从 v5 的 config/run-history.json 汇总「当天」每账号：余额、当日得分、状态、最后运行时间。
+    容器重建、API 日志缓冲被冲掉时，这份文件依然是权威数据。"""
+    path = "/root/microsoft-rewards-script/config/run-history.json"
+    out = {}
+    try:
+        runs = json.load(open(path, encoding="utf-8"))
+    except Exception:
+        return out
+    if isinstance(runs, dict):
+        runs = runs.get("runs") or []
+    today = time.strftime("%Y-%m-%d")
+    for r in runs:
+        ts = str(r.get("endedAt") or r.get("startedAt") or "")
+        try:
+            dt = datetime.datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=datetime.timezone.utc)
+        except Exception:
+            continue
+        if dt.astimezone().strftime("%Y-%m-%d") != today:
+            continue
+        for acc in (r.get("run") or {}).get("accounts") or []:
+            email = str(acc.get("email") or "").strip()
+            if "@" not in email:
+                continue
+            k = email.split("@")[0]
+            it = out.setdefault(k, {"initial": None, "balance": None, "status": "", "lastRunAt": ""})
+            init, final = acc.get("initialPoints"), acc.get("finalPoints")
+            if isinstance(init, int) and (it["initial"] is None or ts < it.get("firstTs", "9")):
+                it["initial"] = init
+                it["firstTs"] = ts
+            if isinstance(final, int) and ts >= it.get("lastTs", ""):
+                it["balance"] = final
+                it["lastTs"] = ts
+                it["status"] = str(acc.get("status") or "")
+                it["lastRunAt"] = ts
+    for it in out.values():
+        if it["initial"] is not None and it["balance"] is not None:
+            it["today"] = max(0, it["balance"] - it["initial"])
+    return out
+
+
+def sh(cmd, timeout=60):
+    """跑一条只读 shell 命令，返回 (rc, stdout+stderr)。"""
+    try:
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
+    except Exception as e:
+        return 1, str(e)
+
+
+UPDATE_LOG = "/tmp/ms-update.log"
+UPDATE_STATE = os.path.join(BASE, "update.json")
+BASE_IMAGE = "ghcr.io/thenetsky/microsoft-rewards-script:5"
+DERIVED_IMAGE = "ms-rewards:v5-cn"
+
+
+def _img_digest(ref):
+    rc, out = sh(f"docker image inspect -f '{{{{index .RepoDigests 0}}}}' {ref} 2>/dev/null", timeout=20)
+    out = out.strip()
+    return out.split("@")[-1] if rc == 0 and out else ""
+
+
+def _img_created(ref):
+    rc, out = sh(f"docker image inspect -f '{{{{.Created}}}}' {ref} 2>/dev/null", timeout=20)
+    return out.strip()[:19] if rc == 0 and out else ""
+
+
+def _img_size(ref):
+    rc, out = sh(f"docker image inspect -f '{{{{.Size}}}}' {ref} 2>/dev/null", timeout=20)
+    try:
+        return round(int(out.strip()) / 1024 / 1024)
+    except Exception:
+        return None
+
+
+def update_status():
+    st = load_json(UPDATE_STATE, {})
+    pid = st.get("pid")
+    running = False
+    if pid:
+        try:
+            os.kill(int(pid), 0)
+            running = True
+        except Exception:
+            running = False
+    tail = ""
+    try:
+        with open(UPDATE_LOG, "r", encoding="utf-8", errors="replace") as f:
+            tail = "".join(f.readlines()[-40:])
+    except Exception:
+        pass
+    if pid and not running and not st.get("finishedAt"):
+        st["finishedAt"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        st["exitCode"] = 0 if "✅ 更新完成" in tail else 1
+        try:
+            save_json(UPDATE_STATE, st)
+        except Exception:
+            pass
+    rc, ps = sh(f"docker ps --filter name=ms-rewards-api --format '{{{{.Status}}}}|{{{{.Image}}}}'", timeout=15)
+    container = ps.strip() if rc == 0 else ""
+    return {
+        "running": running,
+        "startedAt": st.get("startedAt", ""),
+        "finishedAt": st.get("finishedAt", ""),
+        "exitCode": st.get("exitCode"),
+        "log": tail,
+        "container": container,
+        "derived": {"tag": DERIVED_IMAGE, "digest": _img_digest(DERIVED_IMAGE)[:19], "created": _img_created(DERIVED_IMAGE), "sizeMB": _img_size(DERIVED_IMAGE)},
+        "base": {"tag": BASE_IMAGE, "digest": _img_digest(BASE_IMAGE)[:19]},
+    }
+
+
+def start_update():
+    """后台执行 update-image.sh；返回 (ok, msg)"""
+    st = load_json(UPDATE_STATE, {})
+    pid = st.get("pid")
+    if pid:
+        try:
+            os.kill(int(pid), 0)
+            return False, "更新任务已在运行"
+        except Exception:
+            pass
+    if run_state() == "running":
+        return False, "正在跑积分任务，等它结束后再更新（避免打断运行）"
+    try:
+        os.chmod("/root/ms-panel/update-image.sh", 0o755)
+    except Exception:
+        pass
+    with open(UPDATE_LOG, "w", encoding="utf-8") as f:
+        f.write("")
+    proc = subprocess.Popen(
+        ["/bin/bash", "/root/ms-panel/update-image.sh"],
+        stdout=open(UPDATE_LOG, "ab"), stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    save_json(UPDATE_STATE, {"pid": proc.pid, "startedAt": time.strftime("%Y-%m-%d %H:%M:%S"), "exitCode": None})
+    return True, "已开始更新"
 
 
 def load_kv(path):
@@ -653,6 +794,9 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authed():
             return self.send_json(401, {"error": "unauthorized"})
 
+        if p == "/panel/update/status":
+            return self.send_json(200, update_status())
+
         if p == "/panel/schedule":
             return self.send_json(200, load_json(SCHED, {"enabled": False, "cron": "0 7 * * *"}))
 
@@ -692,12 +836,23 @@ class Handler(BaseHTTPRequestHandler):
                         if v.get("balance") is not None:
                             e["balance"] = v["balance"]
                 today_norm = {str(k).split("@")[0]: v for k, v in (today or {}).items()}
+                rh = run_history_today()
                 for a in accs:
                     key = str(a.get("email") or "").split("@")[0]
                     info = per.get(key) or {}
                     a["balance"] = info.get("balance")
                     a["todayPoints"] = int((today_norm.get(key) or {}).get("total") or 0)
                     a["points7d"] = info.get("d7", 0)
+                    # run-history.json 是权威汇总：容器重建/日志被冲后依然准确，优先覆盖
+                    h = rh.get(key) or {}
+                    if h.get("balance") is not None:
+                        a["balance"] = h["balance"]
+                    if h.get("today") is not None:
+                        a["todayPoints"] = max(int(a.get("todayPoints") or 0), int(h["today"]))
+                    if h.get("status"):
+                        a["lastStatus"] = h["status"]
+                    if h.get("lastRunAt"):
+                        a["lastRunAt"] = h["lastRunAt"]
             except Exception as e:
                 log("[panel] 账号统计补全失败", e)
             return self.send_json(200, {"accounts": accs, "state": run_state()})
@@ -776,6 +931,25 @@ class Handler(BaseHTTPRequestHandler):
 
         if not self.authed():
             return self.send_json(401, {"error": "unauthorized"})
+
+        if p == "/panel/update":
+            ok, msg = start_update()
+            return self.send_json(200 if ok else 409, {"ok": ok, "message": msg, "status": update_status()})
+
+        if p == "/panel/update/check":
+            # 只检查：拉一下官方镜像，比对 digest 是否比本地派生镜像新
+            rc, out = sh(f"docker pull -q {BASE_IMAGE}", timeout=300)
+            if rc != 0:
+                return self.send_json(502, {"ok": False, "error": "拉取官方镜像失败（网络？）", "detail": out.strip()[-300:]})
+            cur = _img_digest(DERIVED_IMAGE)
+            new = _img_digest(BASE_IMAGE)
+            base_created = _img_created(BASE_IMAGE)
+            return self.send_json(200, {
+                "ok": True,
+                "baseDigest": new[:19], "derivedDigest": cur[:19],
+                "baseCreated": base_created,
+                "note": "派生镜像是本地重建的，digest 与官方不同，仅作参考；点「立即更新」会重新打补丁+瘦身并重建容器",
+            })
 
         if p == "/panel/notify/test":
             import notify as notifymod
