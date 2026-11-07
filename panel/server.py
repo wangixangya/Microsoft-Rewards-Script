@@ -20,7 +20,7 @@ from urllib.parse import urlparse, parse_qs, unquote, quote
 BASE = os.path.dirname(os.path.abspath(__file__))
 CONF = os.path.join(BASE, "panel.conf")
 SCHED = os.path.join(BASE, "schedule.json")
-VERSION = "2.3.1"
+VERSION = "2.4.0"
 BUILD_DATE = "2026-11-07"
 STATE = os.path.join(BASE, "state.json")
 PORT = int(os.environ.get("PANEL_PORT", "5310"))
@@ -911,6 +911,53 @@ def test_proxy(p, timeout=18):
             "httpCode": code, "detail": out[:120], "proxy": url.replace(auth, "***@") if auth else url}
 
 
+CONFIG_JSON = "/root/microsoft-rewards-script/config/config.json"
+
+
+def config_read():
+    """直接读 v5 的 config.json（不经过 API：面板明确不代理 /config，因为里面有账号密码）。"""
+    with open(CONFIG_JSON, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def config_redacted(cfg):
+    """回传前把账号密码/TOTP 打码，前端只需要结构。"""
+    out = json.loads(json.dumps(cfg))
+    for a in out.get("accounts") or []:
+        if a.get("password"):
+            a["password"] = "******"
+        if a.get("totpSecret"):
+            a["totpSecret"] = "******"
+        if a.get("recoveryEmail"):
+            a["recoveryEmail"] = "******"
+    return out
+
+
+def config_patch(patch):
+    """合并写回 config.json（保留密码等未传字段），成功后备份。"""
+    if not isinstance(patch, dict) or not patch:
+        return {"error": "空 patch"}
+    cfg = config_read()
+    for k, v in patch.items():
+        if k == "accounts":
+            continue  # 账号信息只走 env.list / 面板账号页，避免 JSON 编辑器把密码写坏
+        if isinstance(v, dict) and isinstance(cfg.get(k), dict):
+            cfg[k].update(v)
+        else:
+            cfg[k] = v
+    bak = CONFIG_JSON + ".bak"
+    try:
+        with open(bak, "w", encoding="utf-8") as f:
+            json.dump(config_read(), f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+    tmp = CONFIG_JSON + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, CONFIG_JSON)
+    return {"ok": True, "config": config_redacted(cfg)}
+
+
 def set_env_key(key, value):
     """设置/覆盖 env.list 里某个全局键（如 CONFIG_CLUSTERS）。"""
     lines = [ln for ln in env_lines() if not re.match(rf"^{re.escape(key)}=", ln)]
@@ -1192,6 +1239,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, {"version": VERSION, "build": BUILD_DATE,
                                         "schedule": load_json(SCHED, {})})
 
+        if p == "/panel/config":
+            try:
+                return self.send_json(200, {"config": config_redacted(config_read()), "path": CONFIG_JSON})
+            except Exception as e:
+                return self.send_json(500, {"error": f"读取 config.json 失败: {e}"})
+
         if p == "/panel/clusters":
             return self.send_json(200, {"clusters": int(get_env_key("CONFIG_CLUSTERS", "1") or 1),
                                         "accounts": len(env_accounts())})
@@ -1327,6 +1380,18 @@ class Handler(BaseHTTPRequestHandler):
 
         if not self.authed():
             return self.send_json(401, {"error": "unauthorized"})
+
+        if p == "/panel/config":
+            try:
+                payload = json.loads(body or b"{}")
+            except Exception:
+                return self.send_json(400, {"error": "bad json"})
+            # 允许两种：{patch:{...}} 增量，或直接给完整对象
+            patch = payload.get("patch") if isinstance(payload.get("patch"), dict) else payload
+            res = config_patch(patch)
+            if res.get("error"):
+                return self.send_json(400, res)
+            return self.send_json(200, res)
 
         if p == "/panel/clusters":
             try:

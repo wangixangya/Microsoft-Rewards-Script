@@ -1104,24 +1104,58 @@ async function loadLogs() {
 $('#refreshLogs').onclick = loadLogs;
 
 const TASK_LABELS = {
-  doDailySet: '每日任务集', doClaimBonusPoints: '领取奖励积分', doMorePromotions: '更多促销活动',
-  doPunchCards: '任务卡', doAppPromotions: 'App 活动', doDesktopSearch: '桌面搜索',
-  doMobileSearch: '移动搜索', doReadToEarn: '阅读赚积分'
+  doDesktopSearch: '桌面搜索',
+  doMobileSearch: '手机搜索',
+  doBonusSearches: '额外搜索（加分任务）',
+  doDailySet: '每日任务集',
+  doMorePromotions: '更多促销活动',
+  doClaimBonusPoints: '领取奖励积分',
+  doPunchCards: '任务卡（打卡）',
+  doAppPromotions: 'App 活动',
+  doDailyCheckIn: '每日签到',
+  doReadToEarn: '阅读赚积分',
+  doActivateSearchPerk: '激活搜索特权',
+  doVisualSearch: '图片搜索',
+};
+const FLAG_LABELS = {
+  headless: '无头模式（不弹窗口）',
+  ensureStreakProtection: '自动保护连胜',
+  autoClaimPunchcardRewards: '自动领取任务卡奖励',
+  skipNonPointTasks: '跳过不给分的任务',
+  continueOnBotWarning: '遇到风控警告继续运行',
+  errorDiagnostics: '错误诊断日志',
+};
+const SEARCH_LABELS = {
+  scrollRandomResults: '随机滚动结果页',
+  clickRandomResults: '随机点击搜索结果',
+  runOnZeroPoints: '0 分也继续跑',
+  parallelSearching: '桌面/手机并行搜索',
+  clusterSearch: '集群搜索',
+  useAccountLocale: '使用账号地区语言',
 };
 async function loadConfig() {
-  const d = await api('/config');
-  const CFG = d.config || d;
+  const d = await papi('/panel/config');
+  if (d.error) { $('#jsonBox').value = '// ' + d.error; flash('读取配置失败：' + d.error, true); return; }
+  const CFG = d.config || {};
   $('#jsonBox').value = JSON.stringify(CFG, null, 2);
+
   const w = CFG.workers || {};
   const box = $('#taskToggles'); box.innerHTML = '';
-  Object.keys(TASK_LABELS).forEach(k => { if (k in w) box.append(toggleRow(TASK_LABELS[k], !!w[k], v => { w[k] = v; })); });
+  const keys = Object.keys(TASK_LABELS).filter(k => k in w)
+    .concat(Object.keys(w).filter(k => !(k in TASK_LABELS)));
+  keys.forEach(k => box.append(toggleRow(TASK_LABELS[k] || k, !!w[k], v => { w[k] = v; })));
+  if (!keys.length) box.append(el('div', 'hint', '配置里没有 workers 段'));
   box.append(saveRow(() => ({workers: w})));
+
   const st = CFG.searchSettings || {};
   const sb = $('#searchToggles'); sb.innerHTML = '';
-  Object.keys(st).forEach(k => { if (typeof st[k] === 'boolean') sb.append(toggleRow(k, st[k], v => { st[k] = v; })); });
+  Object.keys(st).forEach(k => {
+    if (typeof st[k] !== 'boolean') return;
+    sb.append(toggleRow(SEARCH_LABELS[k] || k, st[k], v => { st[k] = v; }));
+  });
   const extra = {};
-  ['headless', 'skipNonPointTasks', 'ensureStreakProtection'].forEach(k => {
-    if (k in CFG) { extra[k] = CFG[k]; sb.append(toggleRow(k, !!CFG[k], v => { CFG[k] = v; extra[k] = v; })); }
+  Object.keys(FLAG_LABELS).forEach(k => {
+    if (k in CFG) { extra[k] = !!CFG[k]; sb.append(toggleRow(FLAG_LABELS[k], !!CFG[k], v => { CFG[k] = v; extra[k] = v; })); }
   });
   sb.append(saveRow(() => ({searchSettings: st, ...extra})));
 }
@@ -1135,7 +1169,7 @@ function saveRow(getPatch) {
   const r = el('div', 'row');
   const b = el('button', 'btn sm primary', '保存');
   b.onclick = async () => {
-    const res = await api('/config', {method: 'PATCH', body: JSON.stringify(getPatch())});
+    const res = await papi('/panel/config', {method: 'POST', body: JSON.stringify({patch: getPatch()})});
     flash(res && res.error ? ('失败：' + res.error) : '已保存，下次运行生效', !!(res && res.error));
   };
   r.append(b); return r;
@@ -1143,8 +1177,9 @@ function saveRow(getPatch) {
 $('#reloadConf').onclick = loadConfig;
 $('#saveJson').onclick = async () => {
   let body; try { body = JSON.parse($('#jsonBox').value); } catch (e) { return flash('JSON 格式错误', true); }
-  const res = await api('/config', {method: 'PUT', body: JSON.stringify(body)});
-  flash(res && res.error ? ('失败：' + res.error) : '已保存', !!(res && res.error));
+  const res = await papi('/panel/config', {method: 'POST', body: JSON.stringify({patch: body})});
+  flash(res && res.error ? ('失败：' + res.error) : '已保存，下次运行生效', !!(res && res.error));
+  if (!res.error) loadConfig();
 };
 
 let SCHED = {enabled: true, cron: '0 7 * * *'};
