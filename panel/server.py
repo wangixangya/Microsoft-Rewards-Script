@@ -9,11 +9,13 @@ import hmac
 import json
 import os
 import re
+import shutil
 import subprocess
 import threading
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote, quote
 
@@ -310,8 +312,20 @@ def account_email(idx):
     return None
 
 
+def _cron_daily_due(cron):
+    """只支持 "M H * * *"：返回今天该触发时刻的时间戳，其他格式返回 None。"""
+    parts = (cron or "").split()
+    if len(parts) != 5 or parts[2:] != ["*", "*", "*"]:
+        return None
+    m, h = parts[0], parts[1]
+    if not (m.isdigit() and h.isdigit()):
+        return None
+    now = time.localtime()
+    return time.mktime((now.tm_year, now.tm_mon, now.tm_mday, int(h), int(m), 0, 0, 0, -1))
+
+
 def rewards_loop():
-    """每天定时：有可领取就先查再领（只在 claimable>0 时才进浏览器领取）。"""
+    """每天定时领取：到点触发；若面板在到点后才启动，当天补跑一次（lastRun 记账防重复）。"""
     last = ""
     while True:
         try:
@@ -319,9 +333,16 @@ def rewards_loop():
             cron = (cfg.get("cron") or "").strip()
             if cfg.get("autoClaim") and cron:
                 tm = time.localtime()
+                today = time.strftime("%Y-%m-%d", tm)
                 stamp = time.strftime("%Y%m%d%H%M", tm)
-                if cron_match(cron, tm) and last != stamp:
+                hit = cron_match(cron, tm) and last != stamp
+                due = _cron_daily_due(cron)
+                catchup = bool(due and time.time() >= due + 90 and cfg.get("lastRun") != today)
+                if hit or catchup:
                     last = stamp
+                    cfg["lastRun"] = today
+                    save_json(os.path.join(BASE, "rewards.json"), cfg)
+                    log(f"[rewards] 开始自动领取 cron={cron} 补跑={'是' if catchup else '否'} 账号={cfg.get('accounts')}")
                     for idx in cfg.get("accounts") or []:
                         email = account_email(idx)
                         if not email:
@@ -1146,6 +1167,11 @@ V5_WORK = "/root/repos/ms-rewards-v5"
 SYNC_SCRIPT = "/root/.hermes/scripts/sync-ms-rewards-v5.sh"
 SYNC_JOB = "f1661c51bde3"
 
+REMOTE_IMG = "ghcr.io/wangixangya/microsoft-rewards-script:5-cn"
+REMOTE_TAG = "ms-rewards:v5-ci"
+REMOTE_LOG = "/root/.hermes/logs/ms-remote-image.log"
+REMOTE_SCRIPT = os.path.join(BASE, "update-remote.sh")
+
 
 def _sh(cmd, timeout=20):
     try:
@@ -1295,6 +1321,268 @@ def start_sync():
     return True
 
 
+def _remote_running():
+    out = _sh(["ps", "-eo", "args"], 8) or ""
+    for ln in out.splitlines():
+        t = ln.strip()
+        if t in (f"bash {REMOTE_SCRIPT}", f"/bin/bash {REMOTE_SCRIPT}", f"/usr/bin/bash {REMOTE_SCRIPT}",
+                 f"bash {REMOTE_SCRIPT} --no-recreate"):
+            return True
+    return False
+
+
+def start_remote_update(no_recreate=False):
+    if _remote_running():
+        return False
+    if run_state() == "running":
+        return None
+    env = dict(os.environ)
+    for k in ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+        env.pop(k, None)
+    args = ["bash", REMOTE_SCRIPT] + (["--no-recreate"] if no_recreate else [])
+    subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True, env=env)
+    return True
+
+
+def remote_status():
+    lines = []
+    try:
+        lines = open(REMOTE_LOG, encoding="utf-8", errors="replace").read().splitlines()[-14:]
+    except Exception:
+        pass
+    return {"running": _remote_running(), "log": lines, "tag": REMOTE_TAG, "source": REMOTE_IMG}
+
+
+
+# ---------------------------------------------------------------- 系统状态 / 运行历史 / 备份 / JS 重建
+RUNS_FILE = os.path.join(BASE, "runs.json")
+BACKUP_DIR = os.path.join(BASE, "backups")
+JS_LOG = "/root/.hermes/logs/ms-js-build.log"
+JS_SCRIPT = os.path.join(BASE, "ql", "build-single-v5.sh")
+_runs_lock = threading.Lock()
+_cpu_prev = {"t": 0.0, "busy": 0, "total": 0}
+
+
+def _rd(path):
+    try:
+        with open(path, "r") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
+def _cpu_pct():
+    try:
+        parts = _rd("/proc/stat").splitlines()[0].split()[1:]
+        v = [int(x) for x in parts[:8]]
+        busy = sum(v[:3]) + v[5] + v[6] + v[7]
+        total = sum(v)
+        pt, pb, ptt = _cpu_prev["t"], _cpu_prev["busy"], _cpu_prev["total"]
+        _cpu_prev.update(t=time.time(), busy=busy, total=total)
+        if pt and total > ptt:
+            return round(100.0 * (busy - pb) / (total - ptt), 1)
+    except Exception:
+        pass
+    return None
+
+
+def _temp_c():
+    for p in ("/sys/class/thermal/thermal_zone0/temp", "/sys/class/hwmon/hwmon0/temp1_input",
+              "/sys/class/hwmon/hwmon1/temp1_input", "/sys/class/hwmon/hwmon2/temp1_input"):
+        t = _rd(p)
+        if t.isdigit() and int(t) > 1000:
+            return round(int(t) / 1000.0, 1)
+    return None
+
+
+def _fmt_mb(kb):
+    return round(kb / 1024.0)
+
+
+def sys_info():
+    mem = {}
+    for ln in _rd("/proc/meminfo").splitlines():
+        if ":" in ln:
+            k, rest = ln.split(":", 1)
+            try:
+                mem[k.strip()] = int(rest.split()[0])
+            except Exception:
+                pass
+    total_kb = mem.get("MemTotal", 0)
+    avail_kb = mem.get("MemAvailable", 0)
+    du = {"total": 0, "used": 0, "free": 0, "percent": 0}
+    try:
+        u = shutil.disk_usage("/")
+        du = {"total": round(u.total / 2**30, 1), "used": round(u.used / 2**30, 1),
+              "free": round(u.free / 2**30, 1),
+              "percent": round(100.0 * u.used / u.total, 1)}
+    except Exception:
+        pass
+    raw = _sh(["docker", "inspect", "ms-rewards-api", "--format",
+               "{{.State.Status}}|{{.State.StartedAt}}|{{.Config.Image}}|{{.HostConfig.Memory}}"], 10) or ""
+    parts = (raw.split("|") + ["", "", "", ""])[:4]
+    cont = {"name": "ms-rewards-api", "status": parts[0] or "unknown", "since": parts[1][:19].replace("T", " "),
+            "image": parts[2], "memLimit": parts[3] not in ("", "0")}
+    up = float((_rd("/proc/uptime").split() or ["0"])[0] or 0)
+    return {
+        "cpu": {"load1": round(os.getloadavg()[0], 2), "load5": round(os.getloadavg()[1], 2),
+                "pct": _cpu_pct(), "cores": os.cpu_count()},
+        "mem": {"total": _fmt_mb(total_kb), "used": _fmt_mb(total_kb - avail_kb),
+                "avail": _fmt_mb(avail_kb),
+                "percent": round(100.0 * (total_kb - avail_kb) / total_kb, 1) if total_kb else 0},
+        "disk": du,
+        "temp": _temp_c(),
+        "uptime": f"{int(up // 86400)}天{int(up % 86400 // 3600)}h",
+        "container": cont,
+        "at": time.strftime("%H:%M:%S"),
+    }
+
+
+def runs_load():
+    try:
+        data = json.load(open(RUNS_FILE))
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def runs_append(rec):
+    with _runs_lock:
+        data = runs_load()
+        data.append(rec)
+        data = data[-300:]
+        tmp = RUNS_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp, RUNS_FILE)
+
+
+def runs_loop():
+    """轮询 API 状态，自动记录每次运行（cron 触发和手动触发都能记）。"""
+    prev = None
+    started = None
+    while True:
+        try:
+            code, body = api_call("GET", "/status", timeout=8)
+            st = json.loads(body) if code == 200 else {}
+            state = st.get("state")
+            if prev != "running" and state == "running":
+                started = time.time()
+            elif prev == "running" and state != "running" and started:
+                last = st.get("lastExit") or {}
+                dur = int(time.time() - started)
+                try:
+                    score = build_summary()[0]
+                except Exception:
+                    score = None
+                runs_append({
+                    "start": time.strftime("%Y-%m-%d %H:%M", time.localtime(started)),
+                    "dur": dur,
+                    "exit": last.get("code"),
+                    "state": state,
+                    "score": score,
+                })
+                started = None
+            prev = state
+        except Exception:
+            pass
+        time.sleep(15)
+
+
+def backup_create(note=""):
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    name = "panel-" + time.strftime("%Y%m%d-%H%M%S") + ".zip"
+    path = os.path.join(BACKUP_DIR, name)
+    files = ["config.json", "env.list", "schedule.json", "proxies.json", "rewards.json", "notify.json"]
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in files:
+            if f == "config.json":
+                src = CONFIG_JSON
+            else:
+                src = os.path.join(BASE, f)
+            if os.path.exists(src):
+                z.write(src, f)
+    return {"name": name, "size": _fmt_size(os.path.getsize(path)),
+            "note": note, "at": time.strftime("%Y-%m-%d %H:%M")}
+
+
+def backup_list():
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    out = []
+    for f in sorted(os.listdir(BACKUP_DIR), reverse=True):
+        if f.endswith(".zip"):
+            p = os.path.join(BACKUP_DIR, f)
+            out.append({"name": f, "size": _fmt_size(os.path.getsize(p)),
+                        "at": time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(p)))})
+    return out[:30]
+
+
+def backup_restore(name):
+    if not re.fullmatch(r"panel-\d{8}-\d{6}\.zip", name or ""):
+        return {"error": "非法备份名"}
+    path = os.path.join(BACKUP_DIR, name)
+    if not os.path.exists(path):
+        return {"error": "备份不存在"}
+    bak = os.path.join(BASE, "restore-before-" + time.strftime("%Y%m%d-%H%M%S"))
+    os.makedirs(bak, exist_ok=True)
+    for f in ("config.json", "schedule.json", "proxies.json", "rewards.json", "notify.json"):
+        src = CONFIG_JSON if f == "config.json" else os.path.join(BASE, f)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(bak, f))
+    with zipfile.ZipFile(path) as z:
+        for member in z.namelist():
+            if ".." in member or member.startswith("/"):
+                continue
+            if member == "config.json":
+                z.extract(member, os.path.dirname(CONFIG_JSON))
+            else:
+                z.extract(member, BASE)
+    return {"ok": True, "restored": name, "before": os.path.basename(bak)}
+
+
+def _js_running():
+    out = _sh(["ps", "-eo", "args"], 8) or ""
+    for ln in out.splitlines():
+        t = ln.strip()
+        if t in (f"bash {JS_SCRIPT}", f"/bin/bash {JS_SCRIPT}", f"/usr/bin/bash {JS_SCRIPT}"):
+            return True
+    return False
+
+
+def start_js_build():
+    if _js_running():
+        return False
+    env = dict(os.environ)
+    for k in ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+        env.pop(k, None)
+    env["HOME"] = "/root"
+    with open(JS_LOG, "w") as f:
+        f.write("")
+    subprocess.Popen(["bash", JS_SCRIPT], stdout=open(JS_LOG, "a"), stderr=subprocess.STDOUT,
+                     start_new_session=True, env=env, cwd=os.path.dirname(JS_SCRIPT))
+    return True
+
+
+def set_account_secret(idx, password=None, totp=None):
+    idx = int(idx)
+    if not any(a["index"] == idx for a in env_accounts()):
+        return {"error": f"账号 {idx} 不存在"}
+    lines = env_lines()
+    def put(key, val):
+        nonlocal lines
+        lines = [ln for ln in lines if not re.match(rf"^ACCOUNT_{idx}_{key}=", ln)]
+        if val:
+            lines.append(f"ACCOUNT_{idx}_{key}={val}")
+    if password is not None:
+        put("PASSWORD", password)
+    if totp is not None:
+        put("TOTP_SECRET", totp.replace(" ", "").upper())
+    _backup_env()
+    _write_env(lines)
+    return {"ok": True, "index": idx, "rebuild": run_rebuild()}
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = 30          # 单连接读写超时，防 slowloris 占线程
@@ -1395,6 +1683,9 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/panel/rewards/config":
             return self.send_json(200, rewards_conf())
 
+        if p == "/panel/update/remote/status":
+            return self.send_json(200, remote_status())
+
         if p == "/panel/update/status":
             return self.send_json(200, update_status())
 
@@ -1407,6 +1698,43 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/panel/version":
             return self.send_json(200, {"version": VERSION, "build": BUILD_DATE,
                                         "schedule": load_json(SCHED, {})})
+
+        if p == "/panel/system":
+            try:
+                return self.send_json(200, sys_info())
+            except Exception as e:
+                return self.send_json(500, {"error": f"读取系统状态失败: {e}"})
+
+        if p == "/panel/runs":
+            runs = runs_load()[-60:][::-1]
+            return self.send_json(200, {"runs": runs, "total": len(runs_load())})
+
+        if p == "/panel/backup/list":
+            return self.send_json(200, {"backups": backup_list()})
+
+        if p == "/panel/backup/download":
+            name = (parse_qs(u.query).get("name") or [""])[0]
+            if not re.fullmatch(r"panel-\d{8}-\d{6}\.zip", name):
+                return self.send_json(400, {"error": "非法备份名"})
+            path = os.path.join(BACKUP_DIR, name)
+            if not os.path.exists(path):
+                return self.send_json(404, {"error": "备份不存在"})
+            data = open(path, "rb").read()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
+        if p == "/panel/release/rebuild-js/status":
+            lines = []
+            try:
+                lines = open(JS_LOG, encoding="utf-8", errors="replace").read().splitlines()[-12:]
+            except Exception:
+                pass
+            return self.send_json(200, {"running": _js_running(), "log": lines})
 
         if p == "/panel/release":
             try:
@@ -1604,6 +1932,41 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, {"version": VERSION, "build": BUILD_DATE,
                                         "schedule": load_json(SCHED, {})})
 
+        if p == "/panel/backup":
+            try:
+                return self.send_json(200, backup_create("手动备份"))
+            except Exception as e:
+                return self.send_json(500, {"error": f"备份失败: {e}"})
+
+        if p == "/panel/backup/restore":
+            try:
+                _pl = json.loads(body or b"{}")
+            except Exception:
+                return self.send_json(400, {"error": "bad json"})
+            if run_state() == "running":
+                return self.send_json(409, {"error": "任务运行中，先停下再恢复配置"})
+            res = backup_restore(str(_pl.get("name") or ""))
+            if res.get("error"):
+                return self.send_json(400, res)
+            return self.send_json(200, {"ok": True, "note": "已恢复文件；env.list 变更需重建容器才生效", **res})
+
+        if p == "/panel/release/rebuild-js":
+            ok = start_js_build()
+            return self.send_json(202 if ok else 409,
+                                  {"ok": ok, "message": "已开始重建 JS 单文件" if ok else "已在重建中"})
+
+        if p == "/panel/accounts/secret":
+            try:
+                _pl = json.loads(body or b"{}")
+            except Exception:
+                return self.send_json(400, {"error": "bad json"})
+            if run_state() == "running":
+                return self.send_json(409, {"error": "任务运行中，先停下再改账号密码"})
+            res = set_account_secret(_pl.get("index") or 0, _pl.get("password"), _pl.get("totp"))
+            if res.get("error"):
+                return self.send_json(400, res)
+            return self.send_json(200, res)
+
         if p == "/panel/release/sync":
             if run_state() == "running":
                 return self.send_json(409, {"ok": False, "error": "积分任务正在运行，先停下再同步，避免重建镜像时打断"})
@@ -1709,6 +2072,17 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/panel/update":
             ok, msg = start_update()
             return self.send_json(200 if ok else 409, {"ok": ok, "message": msg, "status": update_status()})
+
+        if p == "/panel/update/remote":
+            try:
+                _pl = json.loads(body or b"{}")
+            except Exception:
+                _pl = {}
+            rc = start_remote_update(no_recreate=bool(_pl.get("pullOnly")))
+            if rc is None:
+                return self.send_json(409, {"ok": False, "error": "积分任务正在运行，先停下再重建"})
+            return self.send_json(202 if rc else 409,
+                                  {"ok": rc, "message": "已开始拉取远端镜像" if rc else "已在拉取中"})
 
         if p == "/panel/update/check":
             # 只检查：拉一下官方镜像，比对 digest 是否比本地派生镜像新
@@ -1915,6 +2289,7 @@ def main():
     threading.Thread(target=scheduler_loop, daemon=True).start()
     threading.Thread(target=account_sched_loop, daemon=True).start()
     threading.Thread(target=rewards_loop, daemon=True).start()
+    threading.Thread(target=runs_loop, daemon=True).start()
     threading.Thread(target=collector_loop, daemon=True).start()
     threading.Thread(target=notify_loop, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)

@@ -21,6 +21,26 @@ from email.mime.text import MIMEText
 from email.header import Header
 
 BASE = os.path.dirname(os.path.abspath(__file__))
+_ENV_PROXY = {"v": None}
+
+
+def _proxy_for(conf):
+    """优先渠道里填的 proxy，否则回退 ~/.hermes/.env 的 TELEGRAM_PROXY（TG 直连在本机不可靠）。"""
+    p = (conf or {}).get("proxy")
+    if p:
+        return p
+    if _ENV_PROXY["v"] is None:
+        val = ""
+        try:
+            with open("/root/.hermes/.env", "r", encoding="utf-8") as f:
+                for ln in f:
+                    if ln.startswith("TELEGRAM_PROXY="):
+                        val = ln.split("=", 1)[1].split("#")[0].strip().strip('"').strip("'")
+                        break
+        except Exception:
+            pass
+        _ENV_PROXY["v"] = val
+    return _ENV_PROXY["v"]
 CONF_PATH = os.path.join(BASE, "notify.json")
 
 # 每种渠道的元数据 + 字段定义（key, 标签, 是否必填, 默认值, 是否密码）
@@ -32,6 +52,7 @@ TYPES = {
             ("bot_token", "Bot Token", True, "", True),
             ("chat_id", "Chat ID", True, "", False),
             ("api_base", "API 地址", False, "https://api.telegram.org", False),
+            ("proxy", "代理（可选，留空自动用 TELEGRAM_PROXY）", False, "", True),
         ],
     },
     "wecom": {
@@ -132,7 +153,7 @@ def save(data):
         pass
 
 
-def _req(url, data=None, headers=None, method=None, timeout=15):
+def _req(url, data=None, headers=None, method=None, timeout=15, proxy=None):
     h = {"User-Agent": "ms-rewards-panel/1.0"}
     if headers:
         h.update(headers)
@@ -145,7 +166,13 @@ def _req(url, data=None, headers=None, method=None, timeout=15):
             body = data.encode()
     req = urllib.request.Request(url, data=body, headers=h, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        if proxy:
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+            r = opener.open(req, timeout=timeout)
+        else:
+            r = urllib.request.urlopen(req, timeout=timeout)
+        with r:
             return True, f"{r.status} {r.read()[:300].decode('utf-8', 'ignore')}"
     except Exception as e:
         return False, str(e)[:300]
@@ -160,7 +187,8 @@ def send(channel, title, text, timeout=15):
             base = (c.get("api_base") or "https://api.telegram.org").rstrip("/")
             ok, d = _req(f"{base}/bot{c['bot_token']}/sendMessage",
                          {"chat_id": c["chat_id"], "text": f"<b>{title}</b>\n\n{text}",
-                          "parse_mode": "HTML", "disable_web_page_preview": True}, timeout=timeout)
+                          "parse_mode": "HTML", "disable_web_page_preview": True},
+                         timeout=timeout, proxy=_proxy_for(c))
             return ok, d
         if t == "wecom":
             return _req(c["url"], {"msgtype": "markdown",

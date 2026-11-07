@@ -2,6 +2,9 @@
 # 用 GitHub Actions 产出的 :5-cn 镜像重建容器（不重新打补丁/不瘦身，约 1.3GB）
 # 用法: update-remote.sh [--no-recreate]
 set -uo pipefail
+# systemd 服务里 HOME 可能不是 /root，docker 找不到 ghcr 凭据 → 显式指定
+export HOME=/root
+export DOCKER_CONFIG=/root/.docker
 
 SRC="${SRC:-ghcr.io/wangixangya/microsoft-rewards-script:5-cn}"
 TAG="${TAG:-ms-rewards:v5-ci}"

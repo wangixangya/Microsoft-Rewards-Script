@@ -258,6 +258,18 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
         </div>
       </div>
 
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h"><h3>系统状态</h3><span class="hint" id="sysAt">—</span></div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px">
+          <div><div class="k">CPU</div><div class="v" id="sysCpu">—</div></div>
+          <div><div class="k">内存</div><div class="v" id="sysMem">—</div></div>
+          <div><div class="k">磁盘 /</div><div class="v" id="sysDisk">—</div></div>
+          <div><div class="k">温度</div><div class="v" id="sysTemp">—</div></div>
+          <div><div class="k">容器</div><div class="v" id="sysCont">—</div></div>
+          <div><div class="k">运行时长</div><div class="v" id="sysUp">—</div></div>
+        </div>
+      </div>
+
       <div class="grid" style="grid-template-columns:minmax(0,1.62fr) minmax(0,1fr);margin-bottom:14px" id="chartGrid">
         <div class="card">
           <div class="card-h">
@@ -327,12 +339,21 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
     </div>
 
     <div class="sec" id="sec-logs">
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h"><h3>运行历史</h3><span class="hint">自动记录每次运行（含定时与手动）</span></div>
+        <table><thead><tr><th>开始</th><th>耗时</th><th>退出码</th><th>得分</th><th>结果</th></tr></thead>
+          <tbody id="runTb"><tr><td colspan="5" class="hint">暂无记录</td></tr></tbody></table>
+      </div>
+
       <div class="card">
         <div class="card-h">
           <h3>运行日志</h3>
           <div style="display:flex;gap:8px;align-items:center">
             <label class="hint" style="display:flex;gap:6px;align-items:center;cursor:pointer">
               <input type="checkbox" id="autoScroll" checked style="width:auto">自动滚动
+            </label>
+            <label class="hint" style="display:flex;gap:6px;align-items:center;cursor:pointer">
+              <input type="checkbox" id="autoRefresh" style="width:auto">自动刷新
             </label>
             <button class="btn sm" id="refreshLogs">刷新</button>
           </div>
@@ -383,6 +404,10 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
             <div style="font-weight:600;margin-bottom:4px">发布中心</div>
             <div class="hint" style="font-weight:400">仓库同步状态、远端 -cn 镜像、JS 单文件、通知目标</div>
           </button>
+          <button class="btn" data-open="backup" style="text-align:left;padding:14px 16px;height:auto">
+            <div style="font-weight:600;margin-bottom:4px">备份与恢复</div>
+            <div class="hint" style="font-weight:400">配置打包下载、一键回滚</div>
+          </button>
         </div>
       </div>
       <div class="card" style="margin-top:14px">
@@ -407,6 +432,8 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
         </tbody></table>
         <div style="margin-top:14px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
           <button class="btn primary" id="relSync">立即检查上游</button>
+          <button class="btn" id="relBuildJs">重建 JS 单文件</button>
+          <a class="btn" href="https://github.com/wangixangya/Microsoft-Rewards-Script/releases" target="_blank" rel="noopener">打开 Release</a>
           <span class="hint" id="relSyncMsg"></span>
         </div>
       </div>
@@ -421,6 +448,19 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
       <div class="card" style="margin-top:14px">
         <div class="card-h"><h3>最近同步记录</h3><span class="hint" id="relState">—</span></div>
         <div class="mono" id="relLog" style="white-space:pre-wrap;font-size:12px;line-height:1.7">—</div>
+      </div>
+    </div>
+
+    <div class="sec" id="sec-backup">
+      <div class="card">
+        <div class="card-h"><h3>配置备份</h3><span class="hint">config.json / env.list / 计划 / 代理 / 奖励 / 推送</span></div>
+        <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <button class="btn primary" id="bkCreate">立即备份</button>
+          <span class="hint" id="bkMsg"></span>
+        </div>
+        <table style="margin-top:12px"><thead><tr><th>名称</th><th>大小</th><th>时间</th><th>操作</th></tr></thead>
+          <tbody id="bkTb"><tr><td colspan="4" class="hint">暂无备份</td></tr></tbody></table>
+        <div class="hint" style="margin-top:10px">恢复会先把当前文件另存到 restore-before-时间戳/，再覆盖；env.list 改动需重建容器才生效。</div>
       </div>
     </div>
 
@@ -592,11 +632,14 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
         <div style="margin-top:14px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
           <button class="btn" id="updCheckBtn">检查官方更新</button>
           <button class="btn primary" id="updRunBtn">立即更新</button>
+          <button class="btn" id="updRemoteBtn">用远端 :5-cn 重建</button>
           <span class="hint" id="updMsg"></span>
         </div>
         <div class="hint" style="margin-top:10px">
           流程：拉官方镜像 → 重打补丁 + 瘦身 + 拍扁 → 重建容器（约 1–3 分钟，容器会重启一次）。
-          正在跑积分任务时会被拒绝，避免打断。
+          正在跑积分任务时会被拒绝，避免打断。<br>
+          「用远端 :5-cn 重建」= 直接拉 GitHub Actions 已打好补丁的镜像（约 1.3GB，比本地瘦身版大，但不占编译时间），
+          拉完自动重建容器。
         </div>
       </div>
 
@@ -658,8 +701,8 @@ $('#logoutBtn').onclick = async () => { await fetch('/logout', {method: 'POST'})
 const SEC_LABEL = {dash: '总览', acct: '账号与会话', logs: '运行日志', conf: '任务配置',
                    rewards: '奖励中心', settings: '设置', sched: '运行计划',
                    notify: '推送渠道', proxy: '代理管理', update: '镜像与版本',
-                   release: '发布中心'};
-const SETTINGS_SUBS = ['sched', 'notify', 'proxy', 'update', 'release'];
+                   release: '发布中心', backup: '备份与恢复'};
+const SETTINGS_SUBS = ['sched', 'notify', 'proxy', 'update', 'release', 'backup'];
 
 function navButtonFor(sec) {
   return document.querySelector(`nav button[data-sec="${SETTINGS_SUBS.includes(sec) ? 'settings' : sec}"]`);
@@ -698,7 +741,10 @@ function showSection(sec) {
   if (sec === 'rewards') { initRewardAccounts(); loadRewardsConf(); loadRewards(); }
   if (sec === 'proxy') loadProxies();
   if (sec === 'settings') loadSettingsInfo();
+  if (sec === 'dash') { loadSystem(); loadRuns(); }
   if (sec === 'release') loadRelease();
+  if (sec === 'backup') loadBackups();
+  if (sec === 'logs') loadRuns();
 }
 
 async function loadRelease() {
@@ -720,6 +766,116 @@ async function loadRelease() {
     $('#relLog').textContent = '读取失败：' + (e.message || e);
   }
 }
+
+$('#updRemoteBtn').onclick = async () => {
+  const msg = $('#updMsg');
+  msg.textContent = '正在启动…';
+  try {
+    const r = await papi('/panel/update/remote', {});
+    msg.textContent = r.message || '已开始拉取';
+    pollRemoteLog(0);
+  } catch (e) {
+    msg.textContent = e.message || '启动失败';
+  }
+};
+
+async function pollRemoteLog(n) {
+  try {
+    const st = await papi('/panel/update/remote/status');
+    $('#updState').textContent = st.running ? '拉取/重建中…' : '空闲';
+    $('#updLog').textContent = (st.log || []).join('\n') || '—';
+    if (st.running && n < 120) return setTimeout(() => pollRemoteLog(n + 1), 5000);
+    if (!st.running) { $('#updMsg').textContent = '完成，正在刷新状态'; setTimeout(loadUpdate, 1500); }
+  } catch (e) {
+    if (n < 120) return setTimeout(() => pollRemoteLog(n + 1), 5000);
+  }
+}
+
+
+// ---------------- 系统状态 / 运行历史 / 备份 / JS 重建 ----------------
+async function loadSystem() {
+  try {
+    const d = await papi('/panel/system');
+    const c = d.cpu || {}, m = d.mem || {}, k = d.disk || {}, ct = d.container || {};
+    $('#sysCpu').textContent = (c.pct == null ? '负载 ' + (c.load1 ?? '—') : c.pct + '%') + ` / ${c.cores}核`;
+    $('#sysMem').textContent = `${(m.used/1024).toFixed(1)}G / ${(m.total/1024).toFixed(1)}G (${m.percent}%)`;
+    $('#sysDisk').textContent = `${k.used}G / ${k.total}G (${k.percent}%)`;
+    $('#sysTemp').textContent = (d.temp == null ? '—' : d.temp + '°C');
+    $('#sysCont').textContent = (ct.status || '—') + (ct.image ? ' · ' + String(ct.image).replace('ms-rewards:', '') : '');
+    $('#sysUp').textContent = d.uptime || '—';
+    $('#sysAt').textContent = '更新于 ' + (d.at || '');
+  } catch (e) { $('#sysAt').textContent = '读取失败'; }
+}
+setInterval(() => { if ($('#sec-dash').classList.contains('on')) loadSystem(); }, 20000);
+
+async function loadRuns() {
+  try {
+    const d = await papi('/panel/runs');
+    const rows = (d.runs || []).map(r => {
+      const bad = r.exit != null && ![0, 143].includes(r.exit);
+      const res = bad ? '<span style="color:#b91c1c">异常</span>' : '正常';
+      const dur = r.dur >= 60 ? Math.floor(r.dur / 60) + '分' + (r.dur % 60) + '秒' : (r.dur || 0) + '秒';
+      return `<tr><td>${r.start || '—'}</td><td>${dur}</td><td>${r.exit == null ? '—' : r.exit}</td><td>${r.score == null ? '—' : '+' + r.score}</td><td>${res}</td></tr>`;
+    });
+    $('#runTb').innerHTML = rows.join('') || '<tr><td colspan="5" class="hint">暂无记录</td></tr>';
+  } catch (e) {}
+}
+
+async function loadBackups() {
+  try {
+    const d = await papi('/panel/backup/list');
+    const rows = (d.backups || []).map(b => `<tr><td class="mono">${b.name}</td><td>${b.size}</td><td>${b.at}</td>
+      <td style="white-space:nowrap"><a class="btn sm" href="/panel/backup/download?name=${encodeURIComponent(b.name)}">下载</a>
+      <button class="btn sm" data-bkrestore="${b.name}">恢复</button></td></tr>`);
+    $('#bkTb').innerHTML = rows.join('') || '<tr><td colspan="4" class="hint">暂无备份</td></tr>';
+    $('#bkTb').querySelectorAll('[data-bkrestore]').forEach(btn => btn.onclick = async () => {
+      if (!confirm('恢复 ' + btn.dataset.bkrestore + ' 会覆盖当前配置，继续？')) return;
+      try {
+        const r = await papi('/panel/backup/restore', {method:'POST', body: JSON.stringify({name: btn.dataset.bkrestore})});
+        $('#bkMsg').textContent = r.note || '已恢复';
+      } catch (e) { $('#bkMsg').textContent = e.message || '恢复失败'; }
+      loadBackups();
+    });
+  } catch (e) {}
+}
+$('#bkCreate').onclick = async () => {
+  $('#bkMsg').textContent = '备份中…';
+  try {
+    const r = await papi('/panel/backup', {method:'POST'});
+    $('#bkMsg').textContent = '已创建 ' + r.name;
+    loadBackups();
+  } catch (e) { $('#bkMsg').textContent = e.message || '备份失败'; }
+};
+
+$('#relBuildJs').onclick = async () => {
+  const msg = $('#relSyncMsg');
+  msg.textContent = '正在启动…';
+  try {
+    const r = await papi('/panel/release/rebuild-js', {method:'POST'});
+    msg.textContent = r.message || '已开始';
+    pollJsBuild(0);
+  } catch (e) { msg.textContent = e.message || '启动失败'; }
+};
+async function pollJsBuild(n) {
+  try {
+    const st = await papi('/panel/release/rebuild-js/status');
+    $('#relState').textContent = st.running ? 'JS 重建中…' : '空闲';
+    $('#relLog').textContent = (st.log || []).slice(-6).join('\n') || '—';
+    if (st.running && n < 90) return setTimeout(() => pollJsBuild(n + 1), 5000);
+    if (!st.running) { $('#relSyncMsg').textContent = '完成'; loadRelease(); }
+  } catch (e) { if (n < 90) setTimeout(() => pollJsBuild(n + 1), 5000); }
+}
+
+// 日志自动刷新
+let _logTimer = null;
+document.addEventListener('change', e => {
+  if (e.target && e.target.id === 'autoRefresh') {
+    if (_logTimer) { clearInterval(_logTimer); _logTimer = null; }
+    if (e.target.checked) _logTimer = setInterval(() => {
+      if ($('#sec-logs').classList.contains('on')) { loadLogs(); loadRuns(); }
+    }, 5000);
+  }
+});
 
 $('#relSync').onclick = async () => {
   const msg = $('#relSyncMsg');
@@ -1283,10 +1439,25 @@ async function renderAcctSched() {
     return `<tr><td>${a.index}</td><td>${a.email}</td>
       <td><span class="sw ${t.enabled ? 'on' : ''}" data-acctsw="${a.index}" style="display:inline-block"></span></td>
       <td><input type="text" data-acctcron="${a.index}" value="${t.cron || ''}" placeholder="留空=不独立跑" style="width:150px"></td>
-      <td style="white-space:nowrap"><button class="btn sm" data-acctrun="${a.index}">立即运行</button></td></tr>`;
+      <td style="white-space:nowrap"><button class="btn sm" data-acctrun="${a.index}">立即运行</button>
+        <button class="btn sm" data-acctsec="${a.index}">密码/2FA</button></td></tr>`;
   }).join('') || '<tr><td colspan="5" class="hint">没有账号</td></tr>';
   tb.querySelectorAll('[data-acctsw]').forEach(sw => sw.onclick = () => {
     sw.classList.toggle('on');
+  });
+  tb.querySelectorAll('[data-acctsec]').forEach(b => b.onclick = async () => {
+    const idx = Number(b.dataset.acctsec);
+    const pw = prompt('输入新密码（留空=不改）');
+    if (pw === null) return;
+    const totp = prompt('输入 2FA secret（留空=不改，通常是 base32）');
+    if (totp === null) return;
+    const body = {index: idx};
+    if (pw) body.password = pw;
+    if (totp) body.totp = totp;
+    if (!pw && !totp) return flash('没有改动', true);
+    const r = await papi('/panel/accounts/secret', {method: 'POST', body: JSON.stringify(body)});
+    flash(r.ok ? `账号 ${idx} 已更新，容器重建中` : ('失败：' + (r.error || '')), !r.ok);
+    setTimeout(loadStatus, 2000);
   });
   tb.querySelectorAll('[data-acctrun]').forEach(b => b.onclick = async () => {
     const r = await papi('/panel/run', {method: 'POST', body: JSON.stringify({account: Number(b.dataset.acctrun)})});
