@@ -72,12 +72,14 @@
 「定时任务」→ 新建任务 → 命令里先执行一次：
 
 ```bash
-cd /ql/data/scripts && \
+mkdir -p /ql/data/scripts && cd /ql/data/scripts && \
 curl -sL https://codeload.github.com/wangixangya/Microsoft-Rewards-Script/tar.gz/refs/heads/v4 -o /tmp/msr.tgz && \
-tar -xzf /tmp/msr.tgz -C /tmp "*panel/ql/ms-rewards.js" && \
-cp /tmp/Microsoft-Rewards-Script-4.3.2/panel/ql/ms-rewards.js ./ms-rewards.js && \
-rm -rf /tmp/msr.tgz /tmp/Microsoft-Rewards-Script-4.3.2
+rm -rf /tmp/msrpull && mkdir -p /tmp/msrpull && tar -xzf /tmp/msr.tgz -C /tmp/msrpull && \
+cp /tmp/msrpull/Microsoft-Rewards-Script-*/panel/ql/ms-rewards.js ./ms-rewards.js && \
+rm -rf /tmp/msr.tgz /tmp/msrpull && ls -lh ./ms-rewards.js
 ```
+
+（青龙是 Alpine，`tar` 是 busybox 版，不支持 `--wildcards`，所以先整包解开再 `cp`。）
 
 拉完之后，运行器自己会每 12h 回本仓库取新版，不需要再手动拉。
 
