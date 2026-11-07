@@ -20,6 +20,8 @@ from urllib.parse import urlparse, parse_qs, unquote, quote
 BASE = os.path.dirname(os.path.abspath(__file__))
 CONF = os.path.join(BASE, "panel.conf")
 SCHED = os.path.join(BASE, "schedule.json")
+VERSION = "2.1.0"
+BUILD_DATE = "2026-11-07"
 STATE = os.path.join(BASE, "state.json")
 PORT = int(os.environ.get("PANEL_PORT", "5310"))
 
@@ -329,6 +331,34 @@ def rewards_loop():
         except Exception as e:
             log("[rewards] 自动领取异常", e)
         time.sleep(30)
+
+
+def account_sched_loop():
+    """账号独立任务：每个账号可配自己的 cron，到点只跑该账号。"""
+    fired = {}
+    while True:
+        try:
+            cfg = load_json(SCHED, {})
+            tasks = cfg.get("accounts") or {}
+            tm = time.localtime()
+            stamp = time.strftime("%Y%m%d%H%M", tm)
+            for key, t in tasks.items():
+                if not isinstance(t, dict) or not t.get("enabled"):
+                    continue
+                cron = str(t.get("cron") or "").strip()
+                if len(cron.split()) != 5:
+                    continue
+                if not cron_match(cron, tm) or fired.get(str(key)) == stamp:
+                    continue
+                fired[str(key)] = stamp
+                if run_state() == "running":
+                    log(f"[sched] 账号 {key} 到点，但已有任务在跑，跳过本次")
+                    continue
+                code, body = api_call("POST", "/start", {"accountIndex": int(key)}, timeout=30)
+                log(f"[sched] 账号 {key} 独立任务触发（cron={cron}, HTTP {code}）")
+        except Exception as e:
+            log("[sched] 账号独立任务异常", e)
+        time.sleep(20)
 
 
 def load_kv(path):
@@ -1131,6 +1161,10 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/panel/schedule":
             return self.send_json(200, load_json(SCHED, {"enabled": False, "cron": "0 7 * * *"}))
 
+        if p == "/panel/version":
+            return self.send_json(200, {"version": VERSION, "build": BUILD_DATE,
+                                        "schedule": load_json(SCHED, {})})
+
         if p == "/panel/notify":
             import notify as notifymod
             safe = notifymod.load()
@@ -1262,6 +1296,29 @@ class Handler(BaseHTTPRequestHandler):
 
         if not self.authed():
             return self.send_json(401, {"error": "unauthorized"})
+
+        if p == "/panel/run":
+            try:
+                payload = json.loads(body or b"{}")
+            except Exception:
+                payload = {}
+            acc = payload.get("account")
+            body_obj = {"accountIndex": int(acc)} if acc else {}
+            code, resp = api_call("POST", "/start", body_obj, timeout=30)
+            if code not in (200, 202):
+                msg = "启动失败"
+                if isinstance(resp, dict):
+                    msg = resp.get("error") or msg
+                elif isinstance(resp, (bytes, bytearray)):
+                    msg = resp.decode("utf-8", "replace").strip()[:200] or msg
+                return self.send_json(code if isinstance(code, int) and code >= 400 else 502,
+                                      {"ok": False, "error": msg})
+            return self.send_json(200, {"ok": True, "account": acc or "all",
+                                        "message": "已启动" + (f"（账号 {acc}）" if acc else "（全部账号）")})
+
+        if p == "/panel/version":
+            return self.send_json(200, {"version": VERSION, "build": BUILD_DATE,
+                                        "schedule": load_json(SCHED, {})})
 
         if p == "/panel/proxies":
             try:
@@ -1446,8 +1503,21 @@ class Handler(BaseHTTPRequestHandler):
             cron = str(data.get("cron", "")).strip()
             if cron and len(cron.split()) != 5:
                 return self.send_json(400, {"error": "cron 需要 5 段，例如 0 7 * * *"})
-            save_json(SCHED, {"enabled": bool(data.get("enabled")), "cron": cron or "0 7 * * *"})
-            return self.send_json(200, {"ok": True})
+            cfg = load_json(SCHED, {})
+            cfg["enabled"] = bool(data.get("enabled"))
+            cfg["cron"] = cron or "0 7 * * *"
+            if isinstance(data.get("accounts"), dict):
+                clean = {}
+                for k, v in data["accounts"].items():
+                    if not isinstance(v, dict):
+                        continue
+                    c = str(v.get("cron") or "").strip()
+                    if c and len(c.split()) != 5:
+                        return self.send_json(400, {"error": f"账号 {k} 的 cron 需要 5 段"})
+                    clean[str(int(k))] = {"enabled": bool(v.get("enabled")), "cron": c}
+                cfg["accounts"] = clean
+            save_json(SCHED, cfg)
+            return self.send_json(200, {"ok": True, "schedule": cfg})
 
         if p == "/panel/notify" and method == "PUT":
             import notify as notifymod
@@ -1552,6 +1622,7 @@ def main():
     if not os.path.exists(SCHED):
         save_json(SCHED, {"enabled": True, "cron": "0 7 * * *"})
     threading.Thread(target=scheduler_loop, daemon=True).start()
+    threading.Thread(target=account_sched_loop, daemon=True).start()
     threading.Thread(target=rewards_loop, daemon=True).start()
     threading.Thread(target=collector_loop, daemon=True).start()
     threading.Thread(target=notify_loop, daemon=True).start()
