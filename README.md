@@ -55,24 +55,61 @@
 
 ## 青龙 / QingLong（单文件）
 
-`qinglong/ms-rewards.js` 是**一个文件**的青龙运行器：丢进 `scripts` 目录，定时任务填 `ms-rewards.js` 即可。
+`panel/ql/ms-rewards.js` 是**一个文件**的青龙运行器：丢进 `scripts` 目录，定时任务填 `ms-rewards.js` 即可。
 
-- **在线更新**：每次运行按 `MSR_CHECK_HOURS`（默认 12h）拉上游源码比对哈希，变了就自动重装依赖 + 重建，会话与配置保留
-- **自动装浏览器**：优先用系统 chromium（Alpine 青龙自带 `/usr/bin/chromium`，省 ~270 MB）；没有才下载 patchright 版
+- **运行器自更新**：每次检查时从本仓库 `panel/ql/ms-rewards.js` 取最新版，变了自动替换（旧版存 `.bak`，下次运行生效）
+- **上游同步**：按 `MSR_CHECK_HOURS`（默认 12h）拉上游源码比对哈希，变了自动重装依赖 + 重建，会话与配置保留
+- **不下载浏览器**：优先用系统 chromium（Alpine 青龙自带 `/usr/bin/chromium`，省 ~270 MB）；没有才下 patchright 版
 - **账号走环境变量**：`ACCOUNT_1_EMAIL` / `ACCOUNT_1_PASSWORD` / `ACCOUNT_1_TOTP_SECRET`，密码不落盘
 - **自检**：`MSR_SELFTEST=1 node ms-rewards.js` 只验证依赖 + 浏览器 + 访问必应，不跑任务
 
+### 拉取到青龙面板（三种方式）
+
+**① 面板上传（最省事）** — 左下「脚本管理」→ 新建文件夹 `msr` → 上传 `ms-rewards.js` → 保存。
+
+**② 面板里一条命令拉（推荐，可重复执行自动覆盖）**
+
+「定时任务」→ 新建任务 → 命令里先执行一次：
+
 ```bash
-# 青龙脚本目录里
-node ms-rewards.js                 # 正常跑
-MSR_SELFTEST=1 node ms-rewards.js  # 环境自检
-MSR_CLUSTERS=2 MSR_AUTO_UPDATE=0 node ms-rewards.js
+cd /ql/data/scripts && \
+curl -sL https://codeload.github.com/wangixangya/Microsoft-Rewards-Script/tar.gz/refs/heads/v4 -o /tmp/msr.tgz && \
+tar -xzf /tmp/msr.tgz -C /tmp "*panel/ql/ms-rewards.js" && \
+cp /tmp/Microsoft-Rewards-Script-4.3.2/panel/ql/ms-rewards.js ./ms-rewards.js && \
+rm -rf /tmp/msr.tgz /tmp/Microsoft-Rewards-Script-4.3.2
+```
+
+拉完之后，运行器自己会每 12h 回本仓库取新版，不需要再手动拉。
+
+**③ 订阅管理（ql repo）** — 仅当你想整仓拉取时用：
+
+```bash
+ql repo https://github.com/wangixangya/Microsoft-Rewards-Script.git "panel/ql" "" "" "v4"
+```
+
+> 注意：`ql repo` 走 `github.com`，国内常被墙；不通就用方式 ②，走 `codeload.github.com`。
+
+### 定时任务怎么填
+
+| 项 | 值 |
+|---|---|
+| 名称 | 微软 Rewards |
+| 命令 | `task msr/ms-rewards.js`（放 `msr` 文件夹时）或 `node /ql/data/scripts/ms-rewards.js` |
+| 定时规则 | `0 7 * * *`（每天 7 点；青龙用 6 段式就填 `0 0 7 * * *`） |
+| 环境变量 | `ACCOUNT_1_EMAIL`、`ACCOUNT_1_PASSWORD`，多账号依次 `ACCOUNT_2_*` |
+
+```bash
+# 手动跑 / 自检
+node /ql/data/scripts/ms-rewards.js
+MSR_SELFTEST=1 node /ql/data/scripts/ms-rewards.js
+MSR_CLUSTERS=2 node /ql/data/scripts/ms-rewards.js
 ```
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `MSR_HOME` | `/ql/data/msr` | 工作区（源码 / 会话 / 配置 / 浏览器） |
 | `MSR_AUTO_UPDATE` | `1` | 是否在线同步上游 |
+| `MSR_SELF_UPDATE` | `1` | 是否在线更新运行器本身 |
 | `MSR_CHECK_HOURS` | `12` | 检查间隔 |
 | `MSR_CLUSTERS` | `1` | 并发账号数 1–4 |
 | `MSR_CHROMIUM_PATH` | 自动 | 指定浏览器可执行文件 |

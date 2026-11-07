@@ -99,6 +99,61 @@ function extract(tar, dest) {
   if (r.status !== 0) throw new Error('tar 解压失败');
 }
 
+/* ---------- 运行器自我更新（仓库里 panel/ql/ms-rewards.js） ---------- */
+const SELF_PATH = __filename;
+const REPO_TARBALL = 'https://codeload.github.com/wangixangya/Microsoft-Rewards-Script/tar.gz/refs/heads/v4';
+
+async function checkSelfUpdate(state) {
+  if (process.env.MSR_SELF_UPDATE === '0') return;
+  const stampName = 'runnerChecked';
+  if (Date.now() - (state[stampName] || 0) < CHECK_HOURS * 3600e3) return;
+  const tar = path.join(HOME, `runner-${Date.now()}.tar.gz`);
+  try {
+    log('检查运行器自身更新（GitHub 仓库 panel/ql/ms-rewards.js）');
+    await download(REPO_TARBALL, tar);
+    const stage = path.join(HOME, '.runner');
+    fs.rmSync(stage, { recursive: true, force: true });
+    fs.mkdirSync(stage, { recursive: true });
+    const r = spawnSync('tar', ['-xzf', tar, '-C', stage, '--strip-components=3', '*panel/ql/ms-rewards.js'],
+      { stdio: 'pipe' });
+    if (r.status !== 0) {
+      // 有的 tar 不支持通配符，退回整包解压后查找
+      spawnSync('tar', ['-xzf', tar, '-C', stage], { stdio: 'inherit' });
+    }
+    const hits = [];
+    (function walk(d) {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name === 'ms-rewards.js') hits.push(p);
+      }
+    })(stage);
+    if (!hits.length) { warn('  仓库里没找到 panel/ql/ms-rewards.js，跳过'); return; }
+    const fresh = fs.readFileSync(hits[0]);
+    const mine = fs.readFileSync(SELF_PATH);
+    if (fresh.equals(mine)) {
+      log('  运行器已是最新');
+    } else {
+      fs.copyFileSync(SELF_PATH, SELF_PATH + '.bak');
+      fs.writeFileSync(SELF_PATH + '.new', fresh);
+      // 先落 .new 再原子替换，避免写一半崩掉留下坏文件
+      try {
+        const st = fs.statSync(SELF_PATH);
+        fs.chmodSync(SELF_PATH + '.new', st.mode);
+      } catch {}
+      fs.renameSync(SELF_PATH + '.new', SELF_PATH);
+      log('  运行器已在线更新 → 下次运行生效（旧版存为 ms-rewards.js.bak）');
+    }
+    state[stampName] = Date.now();
+    writeJson(STATE, state);
+  } catch (e) {
+    warn(`  运行器更新检查失败：${e.message}`);
+  } finally {
+    fs.rmSync(tar, { force: true });
+    fs.rmSync(path.join(HOME, '.runner'), { recursive: true, force: true });
+  }
+}
+
 /* ---------- 依赖与构建 ---------- */
 function run(cmd, args, opts = {}) {
   log(`$ ${cmd} ${args.join(' ')}`);
@@ -228,6 +283,8 @@ async function main() {
   const state = readJson(STATE, { version: null, hash: null, lastCheck: 0 });
   const acc = collectAccounts();
   if (!acc.envCount) die('没有账号：请配置环境变量 ACCOUNT_1_EMAIL / ACCOUNT_1_PASSWORD');
+
+  await checkSelfUpdate(state);
 
   const needCheck = AUTO_UPDATE &&
     (Date.now() - (state.lastCheck || 0) > CHECK_HOURS * 3600e3 || !fs.existsSync(path.join(SRC, 'package.json')));
