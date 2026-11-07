@@ -434,6 +434,19 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
         <div class="card-h"><h3>更新日志</h3><span class="hint" id="updState">空闲</span></div>
         <pre id="updLog" style="max-height:340px;overflow:auto;font-size:12px;line-height:1.5;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:10px;white-space:pre-wrap">—</pre>
       </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><h3>面板程序自身</h3><span class="hint">面板代码也入库了，可从仓库拉最新版</span></div>
+        <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <button class="btn" id="selfUpdBtn">从仓库更新面板</button>
+          <button class="btn" id="selfRestartBtn">重启面板</button>
+          <span class="hint" id="selfMsg"></span>
+        </div>
+        <div class="hint" style="margin-top:10px">
+          更新会先备份到 <code>backup-时间戳/</code>，语法检查通过才替换；失败自动回滚。更新时页面会断开几秒。
+        </div>
+        <pre id="selfLog" style="max-height:220px;overflow:auto;font-size:12px;line-height:1.5;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:10px;white-space:pre-wrap;margin-top:10px">—</pre>
+      </div>
     </div>
   </main>
 </div>
@@ -1202,6 +1215,26 @@ $('#updCheckBtn').onclick = async () => {
     loadUpdate();
   } finally { $('#updCheckBtn').disabled = false; }
 };
+
+$('#selfUpdBtn').onclick = async () => {
+  if (!confirm('从仓库拉取最新面板代码并重启？页面会断开几秒。')) return;
+  const r = await papi('/panel/self-update', {method: 'POST', body: '{}'});
+  $('#selfMsg').textContent = r.message || r.error || '';
+  setTimeout(pollSelf, 1500);
+};
+$('#selfRestartBtn').onclick = async () => {
+  if (!confirm('重启面板服务？')) return;
+  const r = await papi('/panel/self-restart', {method: 'POST', body: '{}'});
+  $('#selfMsg').textContent = r.message || '';
+};
+function pollSelf() {
+  papi('/panel/self-update/status').then(d => {
+    $('#selfLog').textContent = d.log || '—';
+    $('#selfLog').scrollTop = $('#selfLog').scrollHeight;
+    if (d.running) setTimeout(pollSelf, 2500);
+    else if (d.log) $('#selfMsg').textContent = d.log.includes('✅') ? '更新完成，可刷新页面' : '更新失败（已回滚，见日志）';
+  }).catch(() => setTimeout(pollSelf, 3000));   // 面板重启期间会短暂失败
+}
 
 (async () => {
   try {

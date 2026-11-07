@@ -163,6 +163,50 @@ def start_update():
     return True, "已开始更新"
 
 
+def self_update_status():
+    st = load_json(os.path.join(BASE, "selfupdate.json"), {})
+    pid = st.get("pid")
+    running = False
+    if pid:
+        try:
+            os.kill(int(pid), 0)
+            running = True
+        except Exception:
+            running = False
+    tail = ""
+    try:
+        with open("/tmp/ms-panel-selfupdate.log", "r", encoding="utf-8", errors="replace") as f:
+            tail = "".join(f.readlines()[-30:])
+    except Exception:
+        pass
+    return {"running": running, "startedAt": st.get("startedAt", ""), "log": tail}
+
+
+def start_self_update():
+    st = load_json(os.path.join(BASE, "selfupdate.json"), {})
+    pid = st.get("pid")
+    if pid:
+        try:
+            os.kill(int(pid), 0)
+            return False, "面板更新已在运行"
+        except Exception:
+            pass
+    os.chmod(os.path.join(BASE, "self-update.sh"), 0o755)
+    open("/tmp/ms-panel-selfupdate.log", "w").close()
+    proc = subprocess.Popen(["/bin/bash", os.path.join(BASE, "self-update.sh")],
+                            stdout=open("/tmp/ms-panel-selfupdate.log", "ab"),
+                            stderr=subprocess.STDOUT, start_new_session=True)
+    save_json(os.path.join(BASE, "selfupdate.json"),
+              {"pid": proc.pid, "startedAt": time.strftime("%Y-%m-%d %H:%M:%S")})
+    return True, "已开始更新面板程序（约 10 秒，期间页面会短暂断开）"
+
+
+def start_self_restart():
+    subprocess.Popen(["/bin/bash", "-c", "sleep 1; systemctl restart ms-panel"],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    return True, "面板将在 1 秒后重启"
+
+
 def load_kv(path):
     out = {}
     with open(path, "r", encoding="utf-8") as f:
@@ -797,6 +841,9 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/panel/update/status":
             return self.send_json(200, update_status())
 
+        if p == "/panel/self-update/status":
+            return self.send_json(200, self_update_status())
+
         if p == "/panel/schedule":
             return self.send_json(200, load_json(SCHED, {"enabled": False, "cron": "0 7 * * *"}))
 
@@ -931,6 +978,14 @@ class Handler(BaseHTTPRequestHandler):
 
         if not self.authed():
             return self.send_json(401, {"error": "unauthorized"})
+
+        if p == "/panel/self-update":
+            ok, msg = start_self_update()
+            return self.send_json(200 if ok else 409, {"ok": ok, "message": msg})
+
+        if p == "/panel/self-restart":
+            ok, msg = start_self_restart()
+            return self.send_json(200, {"ok": ok, "message": msg})
 
         if p == "/panel/update":
             ok, msg = start_update()
