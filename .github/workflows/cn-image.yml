@@ -1,0 +1,77 @@
+name: CN Patched Image
+
+# 在 v5 源码上打「cn.bing.com 兼容」补丁后构建镜像，产出 ghcr.io/<repo>:5-cn
+# 与上游 release 工作流并行、互不覆盖（只推 -cn 后缀标签，amd64 only，省一半时间）
+
+on:
+    push:
+        branches: [v5]
+        paths:
+            - 'src/**'
+            - 'package.json'
+            - 'package-lock.json'
+            - '.github/scripts/patch-bing-origin.js'
+            - '.github/workflows/cn-image.yml'
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    packages: write
+
+concurrency:
+    group: cn-image-${{ github.ref }}
+    cancel-in-progress: true
+
+env:
+    REGISTRY: ghcr.io
+    IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+    build:
+        name: Build CN-patched image
+        runs-on: ubuntu-24.04
+        timeout-minutes: 45
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: ${{ github.sha }}
+                  persist-credentials: false
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+
+            - name: Read version
+              id: ver
+              run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+            - name: Apply cn.bing.com compatibility patch
+              run: |
+                  node .github/scripts/patch-bing-origin.js
+                  grep -q 'export function isBingHost' src/constants/urls.ts
+                  echo "补丁已应用（isBingHost 就位）"
+
+            - uses: docker/setup-buildx-action@v3
+
+            - uses: docker/login-action@v3
+              with:
+                  registry: ${{ env.REGISTRY }}
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Build and push CN image
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  push: true
+                  platforms: linux/amd64
+                  tags: |
+                      ${{ env.IMAGE }}:5-cn
+                      ${{ env.IMAGE }}:${{ steps.ver.outputs.version }}-cn
+                  cache-from: type=gha,version=2,scope=cn-image
+                  cache-to: type=gha,version=2,scope=cn-image,mode=max
+                  labels: |
+                      org.opencontainers.image.source=https://github.com/${{ github.repository }}
+                      org.opencontainers.image.version=${{ steps.ver.outputs.version }}-cn
+                      org.opencontainers.image.revision=${{ github.sha }}
+                      com.wangixangya.patch=bing-origin-cn
