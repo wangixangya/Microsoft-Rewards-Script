@@ -7,14 +7,14 @@
 
 ## 1. 这一版和 v4 的区别
 
-| 项目 | v4 | v5 |
-|---|---|---|
-| Node.js | ≥ 20 | **≥ 24**（低于 24 直接拒绝启动） |
-| 浏览器 | playwright | **patchright**（反检测分支）+ fingerprint 注入 |
-| 并发 | 单进程串行 | 原生 `clusters`（每个 cluster 一个浏览器） |
-| 配置 | `config.json` 部分字段不同 | 新增 `clusters` / `accountDelay` / `taskDelay` / `searchSettings` / `experimental` |
-| 运行记录 | 字符串 | `API_RUN_HISTORY` 是**整数**（天数） |
-| 目录 | `dist/` | `dist/` 同构，但 `scripts/api/*` 扩充了控制接口 |
+| 项目     | v4                         | v5                                                                                 |
+| -------- | -------------------------- | ---------------------------------------------------------------------------------- |
+| Node.js  | ≥ 20                       | **≥ 24**（低于 24 直接拒绝启动）                                                   |
+| 浏览器   | playwright                 | **patchright**（反检测分支）+ fingerprint 注入                                     |
+| 并发     | 单进程串行                 | 原生 `clusters`（每个 cluster 一个浏览器）                                         |
+| 配置     | `config.json` 部分字段不同 | 新增 `clusters` / `accountDelay` / `taskDelay` / `searchSettings` / `experimental` |
+| 运行记录 | 字符串                     | `API_RUN_HISTORY` 是**整数**（天数）                                               |
+| 目录     | `dist/`                    | `dist/` 同构，但 `scripts/api/*` 扩充了控制接口                                    |
 
 会话（cookies）默认在 `sessions/`，账号密码建议只走环境变量或 `config.json` 的 `accounts`。
 
@@ -46,23 +46,23 @@ ghcr.io/wangixangya/microsoft-rewards-script:5-cn
 
 ```jsonc
 {
-  "clusters": 2,              // 并发分片数，1~4，每片独占一个浏览器
-  "headless": true,           // 无头模式；面板/青龙跑必须 true
-  "accountDelay": { "min": 1, "max": 3 },   // 分片之间的随机间隔（分钟）
-  "taskDelay":   { "min": 3, "max": 8 },    // 单任务之间的随机间隔（秒）
-  "rewardsMode": "maximize",  // maximize=尽量多刷；points=只做基础分
-  "workers": {
-    "doDailySet": true,
-    "doMorePromotions": true,
-    "doPunchCard": true,
-    "doDesktopSearch": true,
-    "doMobileSearch": true,
-    "doDailyCheckIn": true
-  },
-  "searchSettings": { "useGeoLocale": false, "scrollRandomResults": true },
-  "globalTimeout": "30m",
-  "debugLogs": false,
-  "proxy": { "query": "", "httpsAgent": false }
+    "clusters": 2, // 并发分片数，1~4，每片独占一个浏览器
+    "headless": true, // 无头模式；面板/青龙跑必须 true
+    "accountDelay": { "min": 1, "max": 3 }, // 分片之间的随机间隔（分钟）
+    "taskDelay": { "min": 3, "max": 8 }, // 单任务之间的随机间隔（秒）
+    "rewardsMode": "maximize", // maximize=尽量多刷；points=只做基础分
+    "workers": {
+        "doDailySet": true,
+        "doMorePromotions": true,
+        "doPunchCard": true,
+        "doDesktopSearch": true,
+        "doMobileSearch": true,
+        "doDailyCheckIn": true
+    },
+    "searchSettings": { "useGeoLocale": false, "scrollRandomResults": true },
+    "globalTimeout": "30m",
+    "debugLogs": false,
+    "proxy": { "query": "", "httpsAgent": false }
 }
 ```
 
