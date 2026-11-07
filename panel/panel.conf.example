@@ -1,0 +1,6 @@
+# 面板配置模板 —— 复制为 panel.conf 后 chmod 600，不要把真实值提交到仓库
+API_BASE=http://127.0.0.1:3010
+API_TOKEN=replace-with-your-api-token
+PANEL_PASSWORD=admin
+# 可选：容器重建脚本路径（默认取面板目录的上一级 recreate_ms.sh）
+# RECREATE_SCRIPT=/root/recreate_ms.sh

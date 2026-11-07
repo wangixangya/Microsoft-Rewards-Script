@@ -1,0 +1,17 @@
+[Unit]
+Description=Microsoft Rewards Web Panel
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/ms-panel
+ExecStart=/usr/bin/python3 /root/ms-panel/server.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

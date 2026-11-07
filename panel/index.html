@@ -1,0 +1,1727 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rewards 控制台</title>
+<style>
+:root{
+  --bg:#f4f4f5;
+  --card:#ffffff;
+  --line:rgba(9,9,11,.09);
+  --line-2:rgba(9,9,11,.14);
+  --txt:#09090b;
+  --dim:#52525b;
+  --dim-2:#71717a;
+  --ink:#0a0a0a;
+  --r:16px;
+  --mono:ui-monospace,SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
+  --shadow:0 1px 2px rgba(9,9,11,.04),0 10px 30px rgba(9,9,11,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:Inter,system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--txt);font-size:14px;-webkit-font-smoothing:antialiased;
+}
+a{color:var(--ink);text-decoration:none}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#d4d4d8;border-radius:99px;border:2px solid var(--bg)}
+::-webkit-scrollbar-track{background:transparent}
+.shell{display:grid;grid-template-columns:226px 1fr;min-height:100vh}
+
+aside{position:sticky;top:0;height:100vh;padding:22px 14px;
+  border-right:1px solid var(--line);background:#fff;display:flex;flex-direction:column;gap:22px}
+.logo{display:flex;align-items:center;gap:11px;padding:0 8px}
+.logo .mark{width:34px;height:34px;border-radius:11px;flex:0 0 auto;background:var(--ink);
+  color:#fff;display:grid;place-items:center;font-weight:700;font-size:15px}
+.logo b{font-size:14px;letter-spacing:.2px;display:block;line-height:1.3;font-weight:600}
+.logo span{font-size:11px;color:var(--dim-2);font-family:var(--mono)}
+nav{display:flex;flex-direction:column;gap:2px}
+nav button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;
+  border:0;color:var(--dim);padding:10px 12px;border-radius:10px;cursor:pointer;font-size:13.5px;
+  font-family:inherit;transition:.15s;font-weight:500}
+nav button:hover{background:#f4f4f5;color:var(--txt)}
+nav button:focus{outline:none}
+nav button.on{background:var(--ink);color:#fff}
+.side-foot{margin-top:auto;display:flex;flex-direction:column;gap:10px;padding:0 6px}
+.side-foot .stat{font-size:11.5px;color:var(--dim-2);font-family:var(--mono);display:flex;justify-content:space-between}
+main{padding:28px 32px 72px;max-width:1340px;width:100%}
+header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+h1{font-size:23px;font-weight:650;letter-spacing:-.4px}
+.sub{color:var(--dim);font-size:12.5px;margin-top:6px;font-family:var(--mono)}
+.actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;font-size:12.5px;
+  border:1px solid var(--line-2);background:#fff;color:var(--dim)}
+.pill .led{width:7px;height:7px;border-radius:50%;background:#a1a1aa}
+.pill.run{border-color:var(--ink);color:var(--txt)}
+.pill.run .led{background:var(--ink);animation:pulse 1.4s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.btn{border:1px solid var(--line-2);background:#fff;color:var(--txt);padding:9px 16px;border-radius:10px;
+  cursor:pointer;font-size:13px;font-family:inherit;transition:.15s;font-weight:500}
+.btn:hover{background:#fafafa;border-color:rgba(9,9,11,.3);transform:translateY(-1px)}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn.primary:hover{background:#27272a}
+.btn.danger{color:#52525b;border-color:var(--line-2);background:#fff}
+.btn.danger:hover{background:#fafafa;border-color:rgba(9,9,11,.3)}
+.btn.ghost{background:transparent}
+.btn.sm{padding:6px 11px;font-size:12px;border-radius:8px}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+
+/* 账号切换 */
+.acctbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  margin-bottom:16px;padding:8px 10px;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+.acctbar .cap{font-size:12px;color:var(--dim-2);padding-left:8px;letter-spacing:.4px;white-space:nowrap}
+.seg{display:flex;gap:4px;background:#f4f4f5;border-radius:11px;padding:4px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;color:var(--dim);font-family:inherit;font-size:12.5px;
+  padding:7px 16px;border-radius:8px;cursor:pointer;transition:.15s;font-weight:500;white-space:nowrap}
+.seg button:hover{color:var(--txt)}
+.seg button.on{background:var(--ink);color:#fff;font-weight:600;box-shadow:0 2px 8px rgba(9,9,11,.18)}
+
+.grid{display:grid;gap:14px}
+.g4{grid-template-columns:repeat(auto-fit,minmax(205px,1fr))}
+.g2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;box-shadow:var(--shadow)}
+.card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
+.card-h h3#chartTitle,.card-h h3#barsTitle{text-transform:none;letter-spacing:.2px}
+.card-h h3{font-size:11.5px;font-weight:600;color:var(--dim-2);letter-spacing:.7px;text-transform:uppercase}
+.kpi{min-height:150px;display:flex;flex-direction:column}
+.kpi .label{font-size:12px;color:var(--dim);letter-spacing:.2px}
+.kpi .val{font-size:31px;font-weight:680;letter-spacing:-1.2px;margin-top:10px;font-variant-numeric:tabular-nums;line-height:1.1}
+.kpi .val small{font-size:13px;font-weight:500;color:var(--dim-2);margin-left:4px;letter-spacing:0}
+.kpi .delta{font-size:12px;margin-top:auto;padding-top:10px;display:flex;align-items:center;gap:6px;
+  font-family:var(--mono);flex-wrap:wrap;color:var(--dim-2)}
+.up{color:#0a0a0a;font-weight:600} .down{color:#71717a;font-weight:500} .flat{color:var(--dim-2)}
+.spark{display:flex;align-items:flex-end;gap:3px;height:32px;margin-top:10px}
+.spark i{flex:1;background:#a1a1aa;border-radius:3px 3px 0 0;min-height:2px;transition:.2s}
+.spark i.on{background:var(--ink)}
+
+.chart-tools{display:flex;gap:4px;align-items:center}
+.chip{padding:5px 12px;border-radius:8px;border:1px solid var(--line-2);background:#fff;color:var(--dim);
+  font-size:12px;cursor:pointer;font-family:inherit;transition:.15s;font-weight:500}
+.chip:hover{color:var(--txt);border-color:rgba(9,9,11,.3)}
+.chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.chart-wrap{position:relative}
+svg.chart{width:100%;height:250px;display:block;overflow:visible}
+.grid-line{stroke:rgba(9,9,11,.10);stroke-width:1}
+.axis-txt{fill:#71717a;font-size:10.5px;font-family:var(--mono)}
+.dot{fill:#fff;stroke:var(--ink);stroke-width:2;opacity:.45;transition:.12s}
+.dot.on{opacity:1;r:5.5}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:#fff;border-radius:9px;padding:9px 12px;
+  font-size:12px;box-shadow:0 12px 30px rgba(9,9,11,.25);opacity:0;transform:translate(-50%,-115%);
+  transition:.12s;white-space:nowrap;z-index:5}
+.tip.on{opacity:1}
+.tip b{font-size:14px;display:block;margin-bottom:2px;font-weight:600}
+.tip span{color:rgba(255,255,255,.72);font-family:var(--mono);font-size:11px}
+
+.bars{display:flex;flex-direction:column;gap:13px}
+.bar-row .top{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px}
+.bar-row .top b{font-family:var(--mono);font-weight:600}
+.track{height:8px;border-radius:99px;background:#f4f4f5;overflow:hidden}
+.fill{height:100%;border-radius:99px;min-width:6px;background:var(--ink);transition:width .5s cubic-bezier(.2,.8,.2,1)}
+.legend{display:flex;flex-wrap:wrap;gap:9px 15px;margin-top:15px}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:3px;margin-right:6px}
+.legend span{font-size:11.5px;color:var(--dim-2)}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;color:var(--dim-2);font-weight:500;font-size:11px;letter-spacing:.5px;text-transform:uppercase;
+  padding:9px 10px;border-bottom:1px solid var(--line)}
+td{padding:11px 10px;border-bottom:1px solid rgba(9,9,11,.05);font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:0}
+tbody tr{transition:.14s}
+tbody tr:hover td{background:#fafafa}
+.mono{font-family:var(--mono);font-size:12.5px}
+.tag{display:inline-block;padding:3px 8px;border-radius:6px;font-size:11.5px;background:#f4f4f5;color:#3f3f46}
+.tag.g{background:#f0fdf4;color:#15803d}
+.tag.r{background:#fef2f2;color:#b91c1c}
+.numtable th:nth-child(n+2),.numtable td:nth-child(n+2){text-align:right}
+.numtable td:last-child,.numtable th:last-child{text-align:right}
+
+#logbox{font-family:var(--mono);font-size:12px;line-height:1.7;height:440px;overflow:auto;background:#fafafa;
+  border:1px solid var(--line);border-radius:12px;padding:14px 16px;white-space:pre-wrap;word-break:break-all;color:#27272a}
+.l-time{color:#a1a1aa}
+.l-err{color:#b91c1c} .l-warn{color:#b45309} .l-ok{color:#15803d} .l-dim{color:#52525b}
+
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid rgba(9,9,11,.06)}
+.row:last-child{border-bottom:0}
+.k{color:var(--dim);font-size:12.5px}
+.sw{position:relative;width:40px;height:22px;border-radius:999px;background:#e4e4e7;cursor:pointer;transition:.18s;flex:0 0 auto}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;
+  box-shadow:0 1px 2px rgba(9,9,11,.2);transition:.18s}
+.sw.on{background:var(--ink)}
+.sw.on::after{left:21px}
+input[type=text],input[type=password],input[type=number],textarea,select{
+  background:#fff;border:1px solid var(--line-2);color:var(--txt);border-radius:10px;padding:9px 12px;
+  font-size:13px;font-family:inherit;width:100%;transition:.15s}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 3px rgba(9,9,11,.07)}
+textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical}
+.hint{color:var(--dim-2);font-size:11.5px;line-height:1.65}
+.sec{display:none;animation:fade .22s ease}
+.sec.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+#login{position:fixed;inset:0;background:rgba(244,244,245,.94);display:flex;align-items:center;justify-content:center;
+  z-index:50;backdrop-filter:blur(8px)}
+#login .box{width:340px;padding:28px;border-radius:18px;background:#fff;border:1px solid var(--line);
+  box-shadow:0 30px 70px rgba(9,9,11,.14)}
+#login h2{font-size:17px;margin-bottom:6px;font-weight:650}
+#login p{color:var(--dim-2);font-size:12.5px;margin-bottom:18px}
+.flash{position:fixed;bottom:24px;right:24px;padding:12px 18px;border-radius:11px;background:var(--ink);color:#fff;
+  font-size:13px;opacity:0;transform:translateY(10px);transition:.25s;z-index:60;box-shadow:0 16px 40px rgba(9,9,11,.25)}
+.flash.on{opacity:1;transform:none}
+.empty{color:var(--dim-2);font-size:12.5px;padding:18px 0;text-align:center}
+@media(max-width:860px){
+  .shell{grid-template-columns:1fr}
+  aside{position:static;height:auto;flex-direction:row;align-items:center;gap:12px;overflow-x:auto;padding:12px 14px}
+  .logo span,.side-foot{display:none}
+  nav{flex-direction:row}
+  nav button{white-space:nowrap;padding:8px 12px}
+  main{padding:18px}
+  .kpi .val{font-size:25px}
+  #chartGrid{grid-template-columns:1fr!important}
+}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="box">
+    <h2>Rewards 控制台</h2>
+    <p>请输入面板密码</p>
+    <input type="password" id="pw" placeholder="密码" autocomplete="current-password">
+    <div style="height:14px"></div>
+    <button class="btn primary" style="width:100%" id="loginBtn">登录</button>
+    <div class="hint" id="loginErr" style="color:#b91c1c;margin-top:10px"></div>
+  </div>
+</div>
+
+<div class="shell">
+  <aside>
+    <div class="logo">
+      <div class="mark">R</div>
+      <div><b>Microsoft Rewards</b><span id="verText">v4.3.2</span></div>
+    </div>
+    <nav>
+      <button class="on" data-sec="dash">总览</button>
+      <button data-sec="acct">账号与会话</button>
+      <button data-sec="logs">运行日志</button>
+      <button data-sec="conf">任务配置</button>
+      <button data-sec="rewards">奖励中心</button>
+      <button data-sec="settings">设置</button>
+    </nav>
+    <div class="side-foot">
+      <div class="stat"><span>调度</span><span id="footSched">—</span></div>
+      <button class="btn sm ghost" id="logoutBtn">退出登录</button>
+    </div>
+  </aside>
+
+  <main>
+    <header>
+      <div>
+        <h1 id="pageTitle">总览</h1>
+        <div class="sub" id="pageSub">正在连接…</div>
+      </div>
+      <div class="actions">
+        <span class="pill" id="statePill"><span class="led"></span><span id="stateTxt">—</span></span>
+        <button class="btn primary" id="startBtn">立即运行</button>
+        <button class="btn danger" id="stopBtn">停止</button>
+      </div>
+    </header>
+
+    <div class="sec on" id="sec-dash">
+      <div class="acctbar">
+        <span class="cap">查看账号</span>
+        <div class="seg" id="acctSeg"></div>
+      </div>
+
+      <div class="grid g4" style="margin-bottom:14px">
+        <div class="card kpi">
+          <div class="label" id="kTodayLabel">今日收益</div>
+          <div class="val" id="kToday">—<small>分</small></div>
+          <div class="delta" id="kTodayDelta">—</div>
+          <div class="spark" id="spark7"></div>
+        </div>
+        <div class="card kpi">
+          <div class="label" id="k7Label">近 7 日合计</div>
+          <div class="val" id="k7">—<small>分</small></div>
+          <div class="delta"><span id="k7Avg">日均 —</span></div>
+        </div>
+        <div class="card kpi">
+          <div class="label" id="kBalLabel">累计余额</div>
+          <div class="val" id="kBal">—<small>分</small></div>
+          <div class="delta"><span id="kBalSub">两账号合计</span></div>
+        </div>
+        <div class="card kpi">
+          <div class="label">本次运行</div>
+          <div class="val" id="kRun">—</div>
+          <div class="delta"><span id="kRunSub">空闲</span></div>
+        </div>
+      </div>
+
+      <div class="grid" style="grid-template-columns:minmax(0,1.62fr) minmax(0,1fr);margin-bottom:14px" id="chartGrid">
+        <div class="card">
+          <div class="card-h">
+            <h3 id="chartTitle">收益趋势</h3>
+            <div class="chart-tools" id="rangeChips">
+              <button class="chip on" data-days="7">7 天</button>
+              <button class="chip" data-days="14">14 天</button>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <svg class="chart" id="chart" viewBox="0 0 760 250" preserveAspectRatio="none"></svg>
+            <div class="tip" id="tip"></div>
+          </div>
+          <div class="hint" id="chartNote" style="margin-top:10px"></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3 id="barsTitle">收益构成 · 近 7 日</h3></div>
+          <div class="bars" id="bars"></div>
+          <div class="legend" id="legend"></div>
+        </div>
+      </div>
+
+      <div class="grid g2">
+        <div class="card">
+          <div class="card-h"><h3>账号对比</h3><span class="hint" id="cmpHint">近 7 日</span></div>
+          <table class="numtable"><thead><tr><th>账号</th><th id="cmpRangeTh">区间</th><th>今日</th><th>余额</th><th>趋势</th></tr></thead>
+          <tbody id="cmpTable"></tbody></table>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>最近运行</h3></div>
+          <table class="numtable"><thead><tr><th>日期</th><th>收益</th><th>账号</th></tr></thead>
+          <tbody id="recentTable"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec" id="sec-acct">
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h"><h3>添加账号</h3><span class="hint">保存后会重建容器（约 15 秒，正在跑的任务会被中断）</span></div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+          <div><div class="k" style="margin-bottom:6px">邮箱</div><input type="text" id="newEmail" placeholder="xxx@qq.com" autocomplete="off"></div>
+          <div><div class="k" style="margin-bottom:6px">密码</div><input type="password" id="newPass" placeholder="微软账号密码" autocomplete="new-password"></div>
+          <div><div class="k" style="margin-bottom:6px">区域</div><input type="text" id="newGeo" value="cn"></div>
+          <div><div class="k" style="margin-bottom:6px">TOTP 密钥（可选）</div><input type="text" id="newTotp" placeholder="留空即可" autocomplete="off"></div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn primary" id="addAcctBtn">添加账号</button>
+          <span class="hint" id="addAcctMsg"></span>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h"><h3>账号信息</h3></div>
+        <table><thead><tr><th>#</th><th>邮箱</th><th>区域</th><th>累计积分</th><th>连续成功</th><th>上次运行</th><th>状态</th><th></th></tr></thead>
+        <tbody id="acctTable"></tbody></table>
+      </div>
+      <div class="card">
+        <div class="card-h">
+          <h3>登录会话（Cookie）</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="hint">失效时删除会话，下次运行自动重登（v5 按账号整删）</span>
+            <button class="btn sm" id="regenBtn">重新生成会话</button>
+          </div>
+        </div>
+        <table><thead><tr><th>邮箱</th><th>平台</th><th>Cookie 数</th><th>更新时间</th><th></th></tr></thead>
+        <tbody id="sessTable"></tbody></table>
+      </div>
+    </div>
+
+    <div class="sec" id="sec-logs">
+      <div class="card">
+        <div class="card-h">
+          <h3>运行日志</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <label class="hint" style="display:flex;gap:6px;align-items:center;cursor:pointer">
+              <input type="checkbox" id="autoScroll" checked style="width:auto">自动滚动
+            </label>
+            <button class="btn sm" id="refreshLogs">刷新</button>
+          </div>
+        </div>
+        <div id="logbox">等待日志…</div>
+      </div>
+    </div>
+
+    <div class="sec" id="sec-conf">
+      <div class="grid g2">
+        <div class="card"><div class="card-h"><h3>任务开关</h3></div><div id="taskToggles"></div></div>
+        <div class="card"><div class="card-h"><h3>搜索与行为</h3></div><div id="searchToggles"></div></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="card-h">
+          <h3>高级 · config.json</h3>
+          <div style="display:flex;gap:8px">
+            <button class="btn sm" id="reloadConf">重新载入</button>
+            <button class="btn sm primary" id="saveJson">保存 JSON</button>
+          </div>
+        </div>
+        <textarea id="jsonBox" rows="20" spellcheck="false"></textarea>
+        <div class="hint" style="margin-top:8px">保存自动备份为 config.json.bak，改动下次运行生效。</div>
+      </div>
+    </div>
+
+    <div class="sec" id="sec-settings">
+      <div class="card">
+        <div class="card-h"><h3>设置</h3><span class="hint">运行计划 / 推送 / 代理 / 版本都在这里</span></div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:4px">
+          <button class="btn" data-open="sched" style="text-align:left;padding:14px 16px;height:auto">
+            <div style="font-weight:600;margin-bottom:4px">运行计划</div>
+            <div class="hint" style="font-weight:400">每日自动运行时间、并发数、账号独立任务</div>
+          </button>
+          <button class="btn" data-open="notify" style="text-align:left;padding:14px 16px;height:auto">
+            <div style="font-weight:600;margin-bottom:4px">推送渠道</div>
+            <div class="hint" style="font-weight:400">运行结束通知、每日汇总、频道配置</div>
+          </button>
+          <button class="btn" data-open="proxy" style="text-align:left;padding:14px 16px;height:auto">
+            <div style="font-weight:600;margin-bottom:4px">代理管理</div>
+            <div class="hint" style="font-weight:400">长效 SOCKS5 / HTTP 代理，按账号绑定</div>
+          </button>
+          <button class="btn" data-open="update" style="text-align:left;padding:14px 16px;height:auto">
+            <div style="font-weight:600;margin-bottom:4px">镜像与版本</div>
+            <div class="hint" style="font-weight:400">检查官方更新、重建镜像、面板自更新</div>
+          </button>
+          <button class="btn" data-open="release" style="text-align:left;padding:14px 16px;height:auto">
+            <div style="font-weight:600;margin-bottom:4px">发布中心</div>
+            <div class="hint" style="font-weight:400">仓库同步状态、远端 -cn 镜像、JS 单文件、通知目标</div>
+          </button>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><h3>面板信息</h3></div>
+        <table><tbody>
+          <tr><td class="k">面板版本</td><td id="setVer">—</td></tr>
+          <tr><td class="k">运行镜像</td><td id="setImage">—</td></tr>
+          <tr><td class="k">调度</td><td id="setSched">—</td></tr>
+          <tr><td class="k">并发</td><td id="setClusters">—</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+
+    <div class="sec" id="sec-release">
+      <div class="card">
+        <div class="card-h"><h3>仓库与版本</h3><span class="hint">上游 v5 → 我的仓库 → 镜像 / 面板 / JS</span></div>
+        <table><tbody>
+          <tr><td class="k">v5 提交</td><td id="relCommit" class="mono">—</td></tr>
+          <tr><td class="k">提交说明</td><td id="relSubject">—</td></tr>
+          <tr><td class="k">落后上游</td><td id="relBehind">—</td></tr>
+          <tr><td class="k">通知目标</td><td id="relNotify" class="mono">—</td></tr>
+        </tbody></table>
+        <div style="margin-top:14px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <button class="btn primary" id="relSync">立即检查上游</button>
+          <span class="hint" id="relSyncMsg"></span>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><h3>产物</h3><span class="hint">本地跑的是瘦身派生镜像；远端 -cn 是 Actions 产出</span></div>
+        <table><tbody>
+          <tr><td class="k">本地镜像</td><td id="relLocalImg">—</td></tr>
+          <tr><td class="k">远端 -cn</td><td id="relRemoteImg">—</td></tr>
+          <tr><td class="k">JS 单文件</td><td id="relJs">—</td></tr>
+        </tbody></table>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><h3>最近同步记录</h3><span class="hint" id="relState">—</span></div>
+        <div class="mono" id="relLog" style="white-space:pre-wrap;font-size:12px;line-height:1.7">—</div>
+      </div>
+    </div>
+
+    <div class="sec" id="sec-sched">
+      <div class="card" style="max-width:620px">
+        <div class="card-h"><h3>每日自动运行</h3></div>
+        <div class="row">
+          <div><div>启用计划任务</div><div class="hint">由面板守护线程触发，不依赖容器内 cron</div></div>
+          <div class="sw" id="schedSw"></div>
+        </div>
+        <div style="margin-top:16px">
+          <div class="k" style="margin-bottom:7px">Cron 表达式（分 时 日 月 周）</div>
+          <input type="text" id="cronInput" placeholder="0 7 * * *">
+          <div class="hint" style="margin-top:7px">例：<span class="mono">0 7 * * *</span> 每天 07:00 · <span class="mono">30 6 * * 1-5</span> 工作日 06:30</div>
+        </div>
+        <div style="margin-top:18px;display:flex;gap:9px">
+          <button class="btn primary" id="saveSched">保存计划</button>
+          <button class="btn" id="runNow">立刻试跑一次</button>
+        </div>
+        <div class="hint" id="schedInfo" style="margin-top:14px"></div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><h3>并发执行</h3><span class="hint">v5 原生 cluster：同时跑多个账号</span></div>
+        <div class="row">
+          <div><div>同时运行几个账号</div>
+            <div class="hint">1 = 串行（默认）；2 = 两账号并行，总耗时约减半</div></div>
+          <input type="text" id="clusterInput" placeholder="手动填写 1–4" style="width:130px">
+        </div>
+        <div style="margin-top:14px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <button class="btn primary" id="saveClusters">保存并重建</button>
+          <span class="hint" id="clusterMsg"></span>
+        </div>
+        <div class="hint" style="margin-top:10px">
+          每个 worker 独立启动浏览器（移动+桌面各一个），2 并发约需 1.5–2 GB 内存。v5 会在第二个分片前插入 1–3 分钟随机间隔（accountDelay），不会真的同时起两个登录。
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><h3>账号独立任务</h3><span class="hint">每个账号可单独定时 / 单独立即运行</span></div>
+        <table><thead><tr><th>#</th><th>账号</th><th>独立计划</th><th>Cron</th><th>操作</th></tr></thead>
+        <tbody id="acctSched"></tbody></table>
+        <div style="margin-top:14px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <button class="btn primary" id="saveAcctSched">保存账号计划</button>
+          <span class="hint" id="acctSchedMsg"></span>
+        </div>
+        <div class="hint" style="margin-top:10px">
+          独立计划与上面的「每日自动运行」互不影响；同时到点时若已有任务在跑，会跳过并记日志（避免两个账号抢同一浏览器会话）。
+        </div>
+      </div>
+    </div>
+
+    <div class="sec" id="sec-notify">
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h"><h3>推送事件</h3><span class="hint">运行结束时自动发消息，多渠道可同时开</span></div>
+        <div id="evToggles"></div>
+        <div class="row">
+          <div><div>每日汇总时间</div><div class="hint">例如 10:00，需配合上面的“每日汇总”开关</div></div>
+          <input type="text" id="dailyTime" style="width:110px" placeholder="10:00">
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h"><h3>已配置渠道</h3><button class="btn sm" id="addChBtn">添加渠道</button></div>
+        <div id="chList"></div>
+      </div>
+
+      <div class="card" id="chFormCard" style="display:none">
+        <div class="card-h"><h3 id="chFormTitle">添加渠道</h3></div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+          <div><div class="k" style="margin-bottom:6px">类型</div><select id="chType"></select></div>
+          <div><div class="k" style="margin-bottom:6px">名称</div><input type="text" id="chName" placeholder="例如 我的 TG"></div>
+        </div>
+        <div id="chFields" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px"></div>
+        <div class="hint" id="chHint" style="margin-top:10px"></div>
+        <div style="margin-top:14px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <button class="btn primary" id="chSave">保存</button>
+          <button class="btn" id="chCancel">取消</button>
+          <span class="hint" id="chMsg"></span>
+        </div>
+      </div>
+    </div>
+    <div class="sec" id="sec-proxy">
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h"><h3>添加代理</h3><span class="hint">只支持长效（静态）代理；SOCKS5 不能带账号密码</span></div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
+          <div><div class="k" style="margin-bottom:6px">名称（可选）</div><input type="text" id="pxName" placeholder="例如 电信长效1"></div>
+          <div><div class="k" style="margin-bottom:6px">类型</div>
+            <select id="pxType"><option value="socks5">SOCKS5</option><option value="http">HTTP</option></select></div>
+          <div><div class="k" style="margin-bottom:6px">地址 / IP</div><input type="text" id="pxHost" placeholder="1.2.3.4 或 proxy.example.com"></div>
+          <div><div class="k" style="margin-bottom:6px">端口</div><input type="text" id="pxPort" placeholder="1080"></div>
+          <div><div class="k" style="margin-bottom:6px">用户名（HTTP 才填）</div><input type="text" id="pxUser" placeholder="留空"></div>
+          <div><div class="k" style="margin-bottom:6px">密码</div><input type="password" id="pxPass" placeholder="留空"></div>
+          <div><div class="k" style="margin-bottom:6px">备注</div><input type="text" id="pxNote" placeholder="出口地区 / 到期时间"></div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <button class="btn" id="pxTestNew">测试连通性</button>
+          <button class="btn primary" id="pxAdd">添加代理</button>
+          <span class="hint" id="pxMsg"></span>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h"><h3>代理列表</h3><span class="hint">删除会自动解除该代理上的账号绑定</span></div>
+        <table><thead><tr><th>名称</th><th>类型</th><th>地址</th><th>认证</th><th>绑定账号</th><th>操作</th></tr></thead>
+        <tbody id="pxTable"></tbody></table>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>账号绑定</h3><span class="hint">保存后会重建容器（约 15 秒）</span></div>
+        <table><thead><tr><th>#</th><th>账号</th><th>当前出口</th><th>绑定代理</th><th></th></tr></thead>
+        <tbody id="pxBind"></tbody></table>
+        <div class="hint" style="margin-top:10px">
+          绑定后该账号的浏览器与 HTTP 请求都走这个代理。换 IP 前后的登录可能触发风控，建议固定同一个长效代理长期使用，不要频繁切换。
+        </div>
+      </div>
+    </div>
+
+    <div class="sec" id="sec-rewards">
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h">
+          <h3>奖励中心</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="rwAccount" style="padding:6px 8px;border:1px solid #ddd;border-radius:8px"></select>
+            <button class="btn sm" id="rwRefresh">刷新</button>
+            <button class="btn sm primary" id="rwClaim">领取</button>
+          </div>
+        </div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:6px">
+          <div><div class="k">可用积分</div><div class="v" id="rwPoints">—</div></div>
+          <div><div class="k">今日已赚</div><div class="v" id="rwToday">—</div></div>
+          <div><div class="k">可领取</div><div class="v" id="rwClaimable">—</div></div>
+          <div><div class="k">每日打卡</div><div class="v" id="rwDaily">—</div></div>
+          <div><div class="k">邀请好友</div><div class="v" id="rwRefer">—</div></div>
+        </div>
+        <div class="hint" id="rwMsg" style="margin-top:10px">—</div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h"><h3>连胜进度</h3><span class="hint">连续 7 天有额外奖励，12 个印章换 1000 分</span></div>
+        <table><thead><tr><th>任务</th><th>进度</th><th>下一档奖励</th></tr></thead>
+        <tbody id="rwStreaks"></tbody></table>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>自动领取</h3><span class="hint">每天定时检查，有可领取就自动点掉</span></div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+          <div><div class="k" style="margin-bottom:6px">开关</div>
+            <select id="rwAuto"><option value="1">开启</option><option value="0">关闭</option></select></div>
+          <div><div class="k" style="margin-bottom:6px">时间（cron）</div>
+            <input type="text" id="rwCron" placeholder="10 9 * * *"></div>
+          <div style="display:flex;align-items:flex-end"><button class="btn primary" id="rwSave">保存</button></div>
+        </div>
+        <div class="hint" style="margin-top:10px">
+          每日 09:10 跑（积分任务 07:00 开跑、约 08:10 结束，避开冲突）。月初 1–5 号福利到账时也会自动领。
+        </div>
+      </div>
+    </div>
+
+    <div class="sec" id="sec-update">
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h"><h3>当前版本</h3><span class="hint">派生镜像 = 官方 v5 + cn.bing.com 补丁 + 瘦身</span></div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+          <div><div class="k">运行镜像</div><div id="updContainer" class="v">—</div></div>
+          <div><div class="k">本地镜像</div><div id="updDerived" class="v">—</div></div>
+          <div><div class="k">官方基础镜像</div><div id="updBase" class="v">—</div></div>
+          <div><div class="k">最近更新</div><div id="updFinished" class="v">—</div></div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <button class="btn" id="updCheckBtn">检查官方更新</button>
+          <button class="btn primary" id="updRunBtn">立即更新</button>
+          <span class="hint" id="updMsg"></span>
+        </div>
+        <div class="hint" style="margin-top:10px">
+          流程：拉官方镜像 → 重打补丁 + 瘦身 + 拍扁 → 重建容器（约 1–3 分钟，容器会重启一次）。
+          正在跑积分任务时会被拒绝，避免打断。
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>更新日志</h3><span class="hint" id="updState">空闲</span></div>
+        <pre id="updLog" style="max-height:340px;overflow:auto;font-size:12px;line-height:1.5;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:10px;white-space:pre-wrap">—</pre>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><h3>面板程序自身</h3><span class="hint">面板代码也入库了，可从仓库拉最新版</span></div>
+        <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <button class="btn" id="selfUpdBtn">从仓库更新面板</button>
+          <button class="btn" id="selfRestartBtn">重启面板</button>
+          <span class="hint" id="selfMsg"></span>
+        </div>
+        <div class="hint" style="margin-top:10px">
+          更新会先备份到 <code>backup-时间戳/</code>，语法检查通过才替换；失败自动回滚。更新时页面会断开几秒。
+        </div>
+        <pre id="selfLog" style="max-height:220px;overflow:auto;font-size:12px;line-height:1.5;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:10px;white-space:pre-wrap;margin-top:10px">—</pre>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="flash" id="flash"></div>
+
+<script>
+let _lastStats = 0, _prevState = null;   // 收益自动刷新的时间戳 / 上次运行状态
+const $ = s => document.querySelector(s);
+const el = (t, cls, txt) => { const e = document.createElement(t); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+let STATS = null, RANGE = 7, FILTER = 'all', timer = null, ACCTS = [];
+
+function flash(msg, bad) {
+  const f = $('#flash'); f.textContent = msg;
+  f.style.background = bad ? '#b91c1c' : '#0a0a0a';
+  f.classList.add('on'); setTimeout(() => f.classList.remove('on'), 2600);
+}
+async function api(path, opt = {}) {
+  const r = await fetch('/api' + path, {headers: {'Content-Type': 'application/json'}, ...opt});
+  if (r.status === 401) { $('#login').style.display = 'flex'; throw new Error('unauthorized'); }
+  const t = await r.text();
+  try { return JSON.parse(t); } catch { return {raw: t}; }
+}
+function nf(n) { return (n == null ? '—' : Number(n).toLocaleString('zh-CN')); }
+function fmtDur(ms) {
+  if (!ms || ms < 0) return '—';
+  const m = Math.floor(ms / 60000), s = Math.floor(ms % 60000 / 1000);
+  return m ? `${m}分${s}秒` : `${s}秒`;
+}
+
+$('#loginBtn').onclick = doLogin;
+$('#pw').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+async function doLogin() {
+  const r = await fetch('/login', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({password: $('#pw').value})});
+  if (r.ok) { $('#login').style.display = 'none'; boot(); } else { $('#loginErr').textContent = '密码错误'; }
+}
+$('#logoutBtn').onclick = async () => { await fetch('/logout', {method: 'POST'}); location.reload(); };
+
+const SEC_LABEL = {dash: '总览', acct: '账号与会话', logs: '运行日志', conf: '任务配置',
+                   rewards: '奖励中心', settings: '设置', sched: '运行计划',
+                   notify: '推送渠道', proxy: '代理管理', update: '镜像与版本',
+                   release: '发布中心'};
+const SETTINGS_SUBS = ['sched', 'notify', 'proxy', 'update', 'release'];
+
+function navButtonFor(sec) {
+  return document.querySelector(`nav button[data-sec="${SETTINGS_SUBS.includes(sec) ? 'settings' : sec}"]`);
+}
+
+function showSection(sec) {
+  document.querySelectorAll('.sec').forEach(s => s.classList.remove('on'));
+  const box = $('#sec-' + sec);
+  if (box) box.classList.add('on');
+  const nav = navButtonFor(sec);
+  document.querySelectorAll('nav button').forEach(x => x.classList.remove('on'));
+  if (nav) nav.classList.add('on');
+  $('#pageTitle').textContent = SEC_LABEL[sec] || sec;
+
+  // 从设置进入的子页：顶部放一个返回条（只建一次）
+  if (SETTINGS_SUBS.includes(sec) && box) {
+    if (!box.querySelector('.backbar')) {
+      const bar = document.createElement('div');
+      bar.className = 'backbar';
+      bar.style.cssText = 'margin-bottom:14px';
+      const btn = document.createElement('button');
+      btn.className = 'btn sm';
+      btn.textContent = '← 返回设置';
+      btn.onclick = () => showSection('settings');
+      bar.append(btn);
+      box.prepend(bar);
+    }
+  }
+
+  if (sec === 'logs') loadLogs();
+  if (sec === 'conf') loadConfig();
+  if (sec === 'sched') loadSched();
+  if (sec === 'notify') loadNotify();
+  if (sec === 'acct') loadAccounts();
+  if (sec === 'update') loadUpdate();
+  if (sec === 'rewards') { initRewardAccounts(); loadRewardsConf(); loadRewards(); }
+  if (sec === 'proxy') loadProxies();
+  if (sec === 'settings') loadSettingsInfo();
+  if (sec === 'release') loadRelease();
+}
+
+async function loadRelease() {
+  try {
+    const r = await papi('/panel/release');
+    const repo = r.repo || {}, sync = r.sync || {};
+    $('#relCommit').textContent = repo.commit ? `${repo.commit} · ${repo.date || ''}` : '—';
+    $('#relSubject').textContent = repo.subject || '—';
+    $('#relBehind').textContent = repo.behind == null ? '—' : (repo.behind === 0 ? '已是最新' : `${repo.behind} 个提交待合并`);
+    $('#relNotify').textContent = sync.notify || '—';
+    const L = r.local || null, R = r.remote || null, J = r.js || null;
+    $('#relLocalImg').textContent = L ? `${L.tag} · ${L.size} · ${L.created}` : '未找到本地镜像';
+    $('#relRemoteImg').textContent = R ? `${R.tag} · ${R.platforms} · ${R.digest}` : '未获取（需 docker login ghcr.io，或 Actions 还没构建）';
+    $('#relJs').textContent = J ? `${J.file} · ${J.size} · ${J.mtime} · payload ${J.payload}` : '未构建';
+    $('#relState').textContent = sync.running ? '同步进行中…' : '空闲';
+    const lines = [...(sync.recent || []), ...(sync.publish || [])];
+    $('#relLog').textContent = lines.length ? lines.slice(-6).join('\n') : '暂无记录';
+  } catch (e) {
+    $('#relLog').textContent = '读取失败：' + (e.message || e);
+  }
+}
+
+$('#relSync').onclick = async () => {
+  const msg = $('#relSyncMsg');
+  msg.textContent = '正在启动…';
+  try {
+    const r = await papi('/panel/release/sync', {});
+    msg.textContent = r.message || '已开始';
+    setTimeout(loadRelease, 3000);
+  } catch (e) {
+    msg.textContent = e.message || '启动失败';
+  }
+};
+
+async function loadSettingsInfo() {
+  try {
+    const v = await papi('/panel/version');
+    $('#setVer').textContent = `v${v.version} · ${v.build}`;
+    $('#setSched').textContent = v.schedule?.enabled ? v.schedule.cron : '关闭';
+  } catch (e) {}
+  try {
+    const c = await papi('/panel/clusters');
+    $('#setClusters').textContent = `${c.clusters} 并发 · ${c.accounts} 个账号`;
+  } catch (e) {}
+  try {
+    const u = await papi('/panel/update/status');
+    $('#setImage').textContent = (u.container || '—');
+  } catch (e) {}
+}
+
+document.querySelectorAll('nav button').forEach(b => { b.onclick = () => showSection(b.dataset.sec); });
+document.querySelectorAll('[data-open]').forEach(b => { b.onclick = () => showSection(b.dataset.open); });
+
+async function loadStatus() {
+  try {
+    const st = await api('/status');
+    const run = st.run || {}, live = run.live || {};
+    const running = st.state === 'running';
+    if (_prevState === true && !running) { _lastStats = 0; loadStats(); loadAccounts(); }
+    _prevState = running;
+    $('#stateTxt').textContent = running ? '运行中' : (st.state === 'idle' ? '空闲' : st.state);
+    $('#statePill').className = 'pill ' + (running ? 'run' : '');
+    $('#startBtn').disabled = running;
+    $('#stopBtn').disabled = !running;
+    $('#verText').textContent = 'v' + (st.version || '—');
+    $('#pageSub').textContent = running
+      ? `开始于 ${new Date(st.startedAt || Date.now()).toLocaleTimeString('zh-CN')} · ${live.currentAccount || '准备中'}`
+      : (st.lastExit ? `上次退出码 ${st.lastExit.code ?? '—'} · ${new Date(st.lastExit.at || Date.now()).toLocaleString('zh-CN')}` : '空闲，等待触发');
+    const startedAt = st.startedAt || run.startedAt;
+    $('#kRun').innerHTML = running ? fmtDur(Date.now() - new Date(startedAt || Date.now()).getTime()) : '空闲';
+    $('#kRunSub').textContent = running ? `${live.currentAccount || '—'} · 已得 ${live.gained ?? 0} 分` : '等待计划或手动触发';
+  } catch (e) {}
+}
+
+async function loadStats() {
+  const r = await fetch(`/panel/stats?days=${Math.max(RANGE, 7)}`);
+  if (r.status === 401) { $('#login').style.display = 'flex'; return; }
+  STATS = await r.json();
+  ACCTS = (STATS.accounts || []).filter(a => a !== 'MAIN');
+  if (FILTER !== 'all' && !ACCTS.includes(FILTER)) FILTER = 'all';
+  renderAcctSeg(); renderKPIs(); renderChart(); renderBars(); renderCompare(); renderRecent();
+}
+
+function renderAcctSeg() {
+  const box = $('#acctSeg'); box.innerHTML = '';
+  const mk = (val, label) => {
+    const b = el('button', FILTER === val ? 'on' : '', label);
+    b.onclick = () => { FILTER = val; renderAcctSeg(); renderKPIs(); renderChart(); renderBars(); renderCompare(); renderRecent(); };
+    return b;
+  };
+  box.append(mk('all', '全部账号'));
+  ACCTS.forEach(a => box.append(mk(a, a)));
+}
+
+function dayTotal(d) {
+  if (FILTER === 'all') return d.total;
+  const a = d.accounts[FILTER];
+  return a ? a.total : 0;
+}
+function acctLabel() { return FILTER === 'all' ? '' : ' · ' + FILTER; }
+
+/* 黑白灰阶：按排名给条形不同深浅 */
+const RAMP = ['#0a0a0a', '#27272a', '#3f3f46', '#52525b', '#71717a', '#a1a1aa', '#d4d4d8', '#e4e4e7', '#f4f4f5'];
+
+function renderKPIs() {
+  if (!STATS) return;
+  const days = STATS.days.slice(-RANGE);
+  const today = days[days.length - 1] || {total: 0, accounts: {}};
+  const yest = days[days.length - 2] || {total: 0, accounts: {}};
+  const t = dayTotal(today), y = dayTotal(yest);
+  const sum = days.reduce((a, d) => a + dayTotal(d), 0);
+  const suf = acctLabel();
+
+  $('#kTodayLabel').textContent = '今日收益' + suf;
+  $('#k7Label').textContent = `近 ${days.length} 日合计` + suf;
+  $('#kBalLabel').textContent = '累计余额' + suf;
+
+  $('#kToday').innerHTML = nf(t) + '<small>分</small>';
+  const diff = t - y;
+  $('#kTodayDelta').innerHTML = (diff > 0 ? `<span class="up">▲ +${nf(diff)}</span>`
+      : diff < 0 ? `<span class="down">▼ ${nf(diff)}</span>` : '<span class="flat">— 持平</span>')
+    + ` <span class="flat">昨日 ${nf(y)}</span>`;
+  $('#k7').innerHTML = nf(sum) + '<small>分</small>';
+  const dataDays = days.filter(d => dayTotal(d) > 0 || Object.keys(d.accounts || {}).length).length || days.length;
+  $('#k7Avg').textContent = `日均 ${Math.round(sum / Math.max(1, dataDays))} 分` + (dataDays < days.length ? ` · 按 ${dataDays} 天计` : '');
+
+  const balOf = (d) => {
+    const src = FILTER === 'all' ? d.accounts : {[FILTER]: d.accounts[FILTER]};
+    let s = 0, has = false;
+    Object.values(src).forEach(a => { if (a && a.balance != null) { s += a.balance; has = true; } });
+    return has ? s : null;
+  };
+  let bal = balOf(today);
+  if (bal == null) {
+    for (let i = STATS.days.length - 1; i >= 0; i--) {
+      const v = balOf(STATS.days[i]);
+      if (v != null) { bal = v; break; }
+    }
+  }
+  if (bal == null) bal = 0;
+  $('#kBal').innerHTML = nf(bal) + '<small>分</small>';
+  $('#kBalSub').textContent = FILTER === 'all' ? '两账号合计' : '当前账号';
+
+  const sp = $('#spark7'); sp.innerHTML = '';
+  const last7 = STATS.days.slice(-7);
+  const mx = Math.max(1, ...last7.map(dayTotal));
+  last7.forEach((d, i) => {
+    const b = el('i', i === last7.length - 1 ? 'on' : '');
+    b.style.height = Math.max(3, Math.round(dayTotal(d) / mx * 32)) + 'px';
+    b.title = `${d.date} ${dayTotal(d)} 分`;
+    sp.append(b);
+  });
+}
+
+function smoothPath(pts) {
+  if (pts.length < 2) return pts.length ? `M${pts[0][0]},${pts[0][1]}` : '';
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    const t = 0.11;
+    const c1x = p1[0] + (p2[0] - p0[0]) * t, c1y = p1[1] + (p2[1] - p0[1]) * t;
+    const c2x = p2[0] - (p3[0] - p1[0]) * t, c2y = p2[1] - (p3[1] - p1[1]) * t;
+    d += ` C${c1x},${c1y} ${c2x},${c2y} ${p2[0]},${p2[1]}`;
+  }
+  return d;
+}
+
+function renderChart() {
+  const svg = $('#chart'); svg.innerHTML = '';
+  if (!STATS) return;
+  const days = STATS.days.slice(-RANGE);
+  $('#chartTitle').textContent = FILTER === 'all' ? '收益趋势 · 全部账号' : `收益趋势 · ${FILTER}`;
+
+  // 没有日志的日期视为“无数据”（不画 0），线在该处断开
+  const vals = days.map(d => (d.total === 0 && !Object.keys(d.accounts || {}).length) ? null : dayTotal(d));
+  const withData = days.filter((d, i) => vals[i] != null);
+  const note = $('#chartNote');
+  if (note) {
+    note.textContent = withData.length
+      ? `数据区间 ${withData[0].date} → ${withData[withData.length - 1].date}（${withData.length} 天有记录${withData.length < days.length ? `，其余 ${days.length - withData.length} 天无日志已留空` : ''}）`
+      : '暂无数据';
+  }
+
+  const W = 760, H = 250, padL = 46, padR = 14, padT = 24, padB = 30;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const known = vals.filter(v => v != null);
+  const maxV = Math.max(10, ...known);
+  const nice = Math.ceil(maxV / 50) * 50 || 50;
+  const x = i => padL + (days.length === 1 ? iw / 2 : (i * iw) / (days.length - 1));
+  const y = v => padT + ih - (v / nice) * ih;
+  const NS = 'http://www.w3.org/2000/svg';
+  const mk = (n, attrs) => { const e = document.createElementNS(NS, n); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+
+  const defs = mk('defs');
+  const lg = mk('linearGradient', {id: 'g1', x1: '0', y1: '0', x2: '0', y2: '1'});
+  lg.append(mk('stop', {offset: '0%', 'stop-color': '#0a0a0a', 'stop-opacity': '.14'}),
+            mk('stop', {offset: '100%', 'stop-color': '#0a0a0a', 'stop-opacity': '0'}));
+  defs.append(lg); svg.append(defs);
+
+  for (let i = 0; i <= 4; i++) {
+    const v = (nice / 4) * i, yy = y(v);
+    svg.append(mk('line', {x1: padL, y1: yy, x2: W - padR, y2: yy, class: 'grid-line'}));
+    const tx = mk('text', {x: padL - 9, y: yy + 3.5, class: 'axis-txt', 'text-anchor': 'end'});
+    tx.textContent = Math.round(v); svg.append(tx);
+  }
+
+  // 按连续区间分段绘制，缺数据的日期断开
+  const segs = [];
+  let cur = [];
+  vals.forEach((v, i) => {
+    if (v == null) { if (cur.length) { segs.push(cur); cur = []; } }
+    else cur.push([x(i), y(v)]);
+  });
+  if (cur.length) segs.push(cur);
+
+  segs.forEach(seg => {
+    if (seg.length === 1) {
+      svg.append(mk('circle', {cx: seg[0][0], cy: seg[0][1], r: 3, fill: '#0a0a0a'}));
+      return;
+    }
+    const line = smoothPath(seg);
+    svg.append(mk('path', {d: `${line} L${seg[seg.length-1][0]},${padT+ih} L${seg[0][0]},${padT+ih} Z`, fill: 'url(#g1)'}));
+    svg.append(mk('path', {d: line, fill: 'none', stroke: '#0a0a0a', 'stroke-width': '2.2',
+      'stroke-linejoin': 'round', 'stroke-linecap': 'round'}));
+  });
+
+  days.forEach((d, i) => {
+    const t = mk('text', {x: x(i), y: H - 8, class: 'axis-txt', 'text-anchor': 'middle'});
+    const p = d.date.split('-'); t.textContent = `${+p[1]}/${+p[2]}`; svg.append(t);
+    const v = vals[i];
+    if (v == null) return;
+    const dot = mk('circle', {cx: x(i), cy: y(v), r: 4, class: 'dot'});
+    svg.append(dot);
+    const w = Math.max(26, iw / days.length);
+    const hit = mk('rect', {x: x(i) - w / 2, y: padT, width: w, height: ih, fill: 'transparent'});
+    hit.addEventListener('mouseenter', () => {
+      dot.classList.add('on');
+      const tip = $('#tip');
+      tip.innerHTML = `<b>${v} 分</b><span>${d.date}${FILTER === 'all' ? '' : ' · ' + FILTER}</span>`;
+      tip.style.left = (x(i) / W * 100) + '%';
+      tip.style.top = (y(v) / H * 250) + 'px';
+      tip.classList.add('on');
+    });
+    hit.addEventListener('mouseleave', () => { dot.classList.remove('on'); $('#tip').classList.remove('on'); });
+    svg.append(hit);
+  });
+}
+
+function renderBars() {
+  if (!STATS) return;
+  const days = STATS.days.slice(-RANGE);
+  $('#barsTitle').textContent = `收益构成 · 近 ${days.length} 日` + acctLabel();
+  const agg = {};
+  days.forEach(d => {
+    const tasks = FILTER === 'all' ? d.tasks : ((d.accounts[FILTER] || {}).tasks || {});
+    for (const k in tasks) agg[k] = (agg[k] || 0) + tasks[k];
+  });
+  const cats = STATS.categories.filter(c => agg[c.key] > 0).sort((a, b) => agg[b.key] - agg[a.key]);
+  const total = cats.reduce((a, c) => a + agg[c.key], 0) || 1;
+  const raw = cats.map(c => (agg[c.key] / total) * 100);
+  const pcts = raw.map(v => Math.floor(v));
+  let rest = 100 - pcts.reduce((a, b) => a + b, 0);
+  raw.map((v, i) => ({i, frac: v - Math.floor(v)})).sort((a, b) => b.frac - a.frac)
+     .forEach(o => { if (rest > 0) { pcts[o.i] += 1; rest -= 1; } });
+
+  const box = $('#bars'); box.innerHTML = '';
+  cats.forEach((c, ci) => {
+    const v = agg[c.key], pct = pcts[ci];
+    const row = el('div', 'bar-row'), top = el('div', 'top');
+    top.append(el('span', '', c.label), el('b', '', `${nf(v)} 分 · ${pct === 0 ? '<1' : pct}%`));
+    const track = el('div', 'track'), fill = el('div', 'fill');
+    fill.style.width = Math.max(2, pct) + '%';
+    fill.style.background = RAMP[Math.min(ci, RAMP.length - 1)];
+    track.append(fill); row.append(top, track); box.append(row);
+  });
+  if (!cats.length) box.append(el('div', 'empty', '暂无分项数据'));
+
+  const lg = $('#legend'); if (lg) lg.innerHTML = '';
+}
+
+function renderCompare() {
+  if (!STATS) return;
+  const days = STATS.days.slice(-RANGE);
+  const tb = $('#cmpTable'); tb.innerHTML = '';
+  const today = days[days.length - 1] || {accounts: {}};
+  ACCTS.forEach(a => {
+    const sum = days.reduce((x, d) => x + ((d.accounts[a] || {}).total || 0), 0);
+    const td0 = (today.accounts[a] || {}).total || 0;
+    let bal = (today.accounts[a] || {}).balance;
+    if (bal == null) {
+      const lw = [...STATS.days].reverse().find(d => (d.accounts[a] || {}).balance != null);
+      bal = lw ? lw.accounts[a].balance : null;
+    }
+    const tr = el('tr');
+    if (FILTER === a) { tr.style.background = '#f4f4f5'; tr.style.boxShadow = 'inset 3px 0 0 #0a0a0a'; }
+    tr.append(el('td', 'mono', a), el('td', '', nf(sum)), el('td', '', nf(td0)), el('td', 'mono', nf(bal)));
+    const td = el('td'), sp = el('div', 'spark');
+    sp.style.height = '22px'; sp.style.marginTop = '0';
+    const mx = Math.max(1, ...days.map(d => (d.accounts[a] || {}).total || 0));
+    days.forEach(d => {
+      const b = el('i');
+      b.style.height = Math.max(2, Math.round(((d.accounts[a] || {}).total || 0) / mx * 22)) + 'px';
+      sp.append(b);
+    });
+    td.append(sp); tr.append(td); tb.append(tr);
+  });
+  $('#cmpHint').textContent = `近 ${days.length} 日`;
+  const th = $('#cmpRangeTh'); if (th) th.textContent = `近 ${days.length} 日`;
+}
+
+function renderRecent() {
+  if (!STATS) return;
+  const tb = $('#recentTable'); tb.innerHTML = '';
+  const val = d => FILTER === 'all' ? d.total : ((d.accounts[FILTER] || {}).total || 0);
+  [...STATS.days].reverse().filter(d => val(d) > 0).slice(0, 7).forEach(d => {
+    const tr = el('tr');
+    tr.append(el('td', 'mono', d.date), el('td', '', nf(val(d))));
+    const td = el('td');
+    Object.keys(d.accounts).forEach(a => {
+      if (FILTER !== 'all' && a !== FILTER) return;
+      const t = el('span', 'tag', `${a} +${d.accounts[a].total}`);
+      t.style.marginRight = '8px'; t.style.fontSize = '11px';
+      td.append(t);
+    });
+    tr.append(td); tb.append(tr);
+  });
+  if (!tb.children.length) {
+    const tr = el('tr'), td = el('td', 'empty', '暂无记录'); td.colSpan = 3; tr.append(td); tb.append(tr);
+  }
+}
+
+async function loadAccounts() {
+  let ENV = [];
+  try {
+    const r = await fetch('/panel/accounts');
+    if (r.ok) ENV = (await r.json()).accounts || [];
+  } catch (e) {}
+  const byEmail = {};
+  ENV.forEach(x => byEmail[String(x.email).toLowerCase()] = x);
+
+  // 以「配置里的账号」为主表（后端已并入 balance/today/7d），再用 API 的内存态补连续成功/上次运行；
+  // 反过来用 API 当主表的话，容器一重建累计积分就全变 0。
+  let APIACC = {};
+  try {
+    const d = await api('/accounts');
+    (d.accounts || []).forEach(x => APIACC[String(x.email).toLowerCase()] = x);
+  } catch (e) {}
+  const rows = ENV.length
+    ? ENV.map(e => ({ ...(APIACC[String(e.email).toLowerCase()] || {}), ...e }))
+    : Object.values(APIACC);
+  const tb = $('#acctTable'); tb.innerHTML = '';
+  rows.forEach(a => {
+    const tr = el('tr');
+    const shortName = String(a.email).split('@')[0];
+    let collected = a.balance;
+    if (collected == null) collected = a.totalCollected;
+    if ((collected == null || collected === 0) && STATS) {
+      for (let i = STATS.days.length - 1; i >= 0; i--) {
+        const acc = (STATS.days[i].accounts || {})[shortName];
+        if (acc && acc.balance != null) { collected = acc.balance; break; }
+      }
+    }
+    const balTd = el('td');
+    balTd.innerHTML = nf(collected) + (a.todayPoints ? ` <span class="hint">今日 +${a.todayPoints}</span>` : '');
+    tr.append(el('td', '', String(a.index)), el('td', 'mono', a.email), el('td', '', a.geoLocale || '—'),
+      balTd,
+      el('td', '', String(a.successStreak ?? 0)),
+      el('td', 'mono', a.lastRunAt ? new Date(a.lastRunAt).toLocaleString('zh-CN') : '—'));
+    const st = el('td'); st.append(el('span', 'tag ' + (a.lastError ? 'r' : 'g'), a.lastError ? '异常' : '正常'));
+    tr.append(st);
+
+    const op = el('td');
+    const envRow = byEmail[String(a.email).toLowerCase()];
+    if (envRow) {
+      const b = el('button', 'btn sm danger', '删除账号');
+      b.onclick = async () => {
+        if (!confirm(`删除账号 ${a.email}？\n会重建容器（约 15 秒），并删除该账号的登录会话。`)) return;
+        b.disabled = true; b.textContent = '重建中…';
+        const r = await fetch(`/panel/accounts?index=${envRow.index}`, {method: 'DELETE'});
+        const j = await r.json();
+        if (j.error) { flash(j.error, true); b.disabled = false; b.textContent = '删除账号'; return; }
+        try { await api(`/sessions/${encodeURIComponent(a.email)}`, {method: 'DELETE'}); } catch (e) {}
+        flash('已删除 ' + a.email);
+        loadAccounts(); loadStats();
+      };
+      op.append(b);
+    } else {
+      op.append(el('span', 'hint', '未在配置中'));
+    }
+    tr.append(op);
+    tb.append(tr);
+  });
+  if (!tb.children.length) {
+    const tr = el('tr'), td = el('td', 'empty', '暂无账号'); td.colSpan = 8; tr.append(td); tb.append(tr);
+  }
+
+  const s = await api('/sessions');
+  const sb = $('#sessTable'); sb.innerHTML = '';
+  (s.sessions || []).forEach(x => {
+    const tr = el('tr');
+    tr.append(el('td', 'mono', x.email), el('td', '', x.platform), el('td', '', String(x.cookieCount ?? 0)),
+      el('td', 'mono', x.updatedAt ? new Date(x.updatedAt).toLocaleString('zh-CN') : '—'));
+    const td = el('td'), b = el('button', 'btn sm danger', '删除');
+    b.onclick = async () => {
+      if (!confirm(`删除 ${x.email} 的会话？\n（v5 按账号整删：该号的桌面 + 移动会话都会清除，下次运行需重新登录）`)) return;
+      const r = await api(`/sessions/${encodeURIComponent(x.email)}`, {method: 'DELETE'});
+      flash(r.error ? ('删除失败：' + r.error) : '会话已删除');
+      loadAccounts();
+    };
+    td.append(b); tr.append(td); sb.append(tr);
+  });
+  const rgBtn = $('#regenBtn');
+  if (rgBtn) rgBtn.onclick = async () => {
+    if (!confirm('重新生成所有账号的登录会话？\n会启动一个独立的浏览器登录任务（不跑积分），约 2-5 分钟。')) return;
+    rgBtn.disabled = true; rgBtn.textContent = '生成中…';
+    const r = await api('/sessions/regenerate', {method: 'POST', body: '{}'});
+    flash(r.error ? ('发起失败：' + r.error) : '已发起会话重建，进度见日志');
+    rgBtn.disabled = false; rgBtn.textContent = '重新生成会话';
+  };
+}
+
+$('#addAcctBtn').onclick = async () => {
+  const email = $('#newEmail').value.trim();
+  const pass = $('#newPass').value;
+  const geo = $('#newGeo').value.trim() || 'cn';
+  const totp = $('#newTotp').value.trim();
+  const msg = $('#addAcctMsg'), btn = $('#addAcctBtn');
+  if (!email || !pass) { msg.textContent = '邮箱和密码都要填'; return; }
+  btn.disabled = true; btn.textContent = '添加中…'; msg.textContent = '正在写入配置并重建容器，约 15 秒…';
+  try {
+    const r = await fetch('/panel/accounts', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email, password: pass, geoLocale: geo, totp})});
+    const j = await r.json();
+    if (j.error) { msg.textContent = '失败：' + j.error; return; }
+    msg.textContent = `已添加 ${email}（容器已重建）。首次运行会自动登录，可能需要人工验证。`;
+    $('#newEmail').value = ''; $('#newPass').value = ''; $('#newTotp').value = '';
+    flash('账号已添加');
+    loadAccounts(); loadStats();
+  } catch (e) {
+    msg.textContent = '失败：' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '添加账号';
+  }
+};
+
+async function loadLogs() {
+  const d = await api('/logs?limit=400');
+  const box = $('#logbox'), list = d.logs || [];
+  if (!list.length) { box.textContent = '暂无日志。发起一次运行后这里会实时滚动。'; return; }
+  box.innerHTML = '';
+  list.forEach(it => {
+    const line = el('div');
+    const rawTs = it.ts || it.time;
+    let t = '';
+    if (rawTs) { const dt = new Date(rawTs); t = isNaN(dt) ? String(rawTs).slice(-8) : dt.toLocaleTimeString('zh-CN'); }
+    const lvl = String(it.level || '').toLowerCase();
+    let cls = 'l-dim';
+    if (/err|fail/.test(lvl)) cls = 'l-err'; else if (/warn/.test(lvl)) cls = 'l-warn'; else if (/success|ok/.test(lvl)) cls = 'l-ok';
+    line.append(el('span', 'l-time', `[${t}] `));
+    if (it.user) line.append(el('span', 'l-dim', `[${it.user}${it.platform ? ' ' + it.platform : ''}] `));
+    if (it.title) line.append(el('span', 'l-ok', `[${it.title}] `));
+    line.append(el('span', cls, it.message || it.raw || JSON.stringify(it)));
+    box.append(line);
+  });
+  if ($('#autoScroll').checked) box.scrollTop = box.scrollHeight;
+}
+$('#refreshLogs').onclick = loadLogs;
+
+const TASK_LABELS = {
+  doDesktopSearch: '桌面搜索',
+  doMobileSearch: '手机搜索',
+  doBonusSearches: '额外搜索（加分任务）',
+  doDailySet: '每日任务集',
+  doMorePromotions: '更多促销活动',
+  doClaimBonusPoints: '领取奖励积分',
+  doPunchCards: '任务卡（打卡）',
+  doAppPromotions: 'App 活动',
+  doDailyCheckIn: '每日签到',
+  doReadToEarn: '阅读赚积分',
+  doActivateSearchPerk: '激活搜索特权',
+  doVisualSearch: '图片搜索',
+};
+const FLAG_LABELS = {
+  headless: '无头模式（不弹窗口）',
+  ensureStreakProtection: '自动保护连胜',
+  autoClaimPunchcardRewards: '自动领取任务卡奖励',
+  skipNonPointTasks: '跳过不给分的任务',
+  continueOnBotWarning: '遇到风控警告继续运行',
+  errorDiagnostics: '错误诊断日志',
+};
+const SEARCH_LABELS = {
+  scrollRandomResults: '随机滚动结果页',
+  clickRandomResults: '随机点击搜索结果',
+  runOnZeroPoints: '0 分也继续跑',
+  parallelSearching: '桌面/手机并行搜索',
+  clusterSearch: '集群搜索',
+  useAccountLocale: '使用账号地区语言',
+};
+async function loadConfig() {
+  const d = await papi('/panel/config');
+  if (d.error) { $('#jsonBox').value = '// ' + d.error; flash('读取配置失败：' + d.error, true); return; }
+  const CFG = d.config || {};
+  $('#jsonBox').value = JSON.stringify(CFG, null, 2);
+
+  const w = CFG.workers || {};
+  const box = $('#taskToggles'); box.innerHTML = '';
+  const keys = Object.keys(TASK_LABELS).filter(k => k in w)
+    .concat(Object.keys(w).filter(k => !(k in TASK_LABELS)));
+  keys.forEach(k => box.append(toggleRow(TASK_LABELS[k] || k, !!w[k], v => { w[k] = v; })));
+  if (!keys.length) box.append(el('div', 'hint', '配置里没有 workers 段'));
+  box.append(saveRow(() => ({workers: w})));
+
+  const st = CFG.searchSettings || {};
+  const sb = $('#searchToggles'); sb.innerHTML = '';
+  Object.keys(st).forEach(k => {
+    if (typeof st[k] !== 'boolean') return;
+    sb.append(toggleRow(SEARCH_LABELS[k] || k, st[k], v => { st[k] = v; }));
+  });
+  const extra = {};
+  Object.keys(FLAG_LABELS).forEach(k => {
+    if (k in CFG) { extra[k] = !!CFG[k]; sb.append(toggleRow(FLAG_LABELS[k], !!CFG[k], v => { CFG[k] = v; extra[k] = v; })); }
+  });
+  sb.append(saveRow(() => ({searchSettings: st, ...extra})));
+}
+function toggleRow(label, val, setter) {
+  const r = el('div', 'row'); r.append(el('span', '', label));
+  const sw = el('div', 'sw' + (val ? ' on' : ''));
+  sw.onclick = () => { const on = !sw.classList.contains('on'); sw.classList.toggle('on', on); setter(on); };
+  r.append(sw); return r;
+}
+function saveRow(getPatch) {
+  const r = el('div', 'row');
+  const b = el('button', 'btn sm primary', '保存');
+  b.onclick = async () => {
+    const res = await papi('/panel/config', {method: 'POST', body: JSON.stringify({patch: getPatch()})});
+    flash(res && res.error ? ('失败：' + res.error) : '已保存，下次运行生效', !!(res && res.error));
+  };
+  r.append(b); return r;
+}
+$('#reloadConf').onclick = loadConfig;
+$('#saveJson').onclick = async () => {
+  let body; try { body = JSON.parse($('#jsonBox').value); } catch (e) { return flash('JSON 格式错误', true); }
+  const res = await papi('/panel/config', {method: 'POST', body: JSON.stringify({patch: body})});
+  flash(res && res.error ? ('失败：' + res.error) : '已保存，下次运行生效', !!(res && res.error));
+  if (!res.error) loadConfig();
+};
+
+let SCHED = {enabled: true, cron: '0 7 * * *'};
+async function loadSched() {
+  SCHED = await (await fetch('/panel/schedule')).json();
+  $('#schedSw').classList.toggle('on', !!SCHED.enabled);
+  $('#cronInput').value = SCHED.cron || '0 7 * * *';
+  $('#schedInfo').textContent = SCHED.enabled ? '已启用，按 cron 触发。' : '已关闭，只能手动运行。';
+  $('#footSched').textContent = SCHED.enabled ? SCHED.cron : 'off';
+  renderAcctSched();
+  try {
+    const c = await papi('/panel/clusters');
+    $('#clusterInput').placeholder = `当前 ${c.clusters}（共 ${c.accounts} 个账号）`;
+    $('#clusterMsg').textContent = '';
+  } catch (e) {}
+}
+$('#saveClusters').onclick = async () => {
+  const raw = $('#clusterInput').value.trim();
+  if (!/^\d+$/.test(raw)) { $('#clusterMsg').textContent = '请填写数字（1–4）'; return; }
+  const n = Number(raw);
+  if (n < 1 || n > 4) { $('#clusterMsg').textContent = '并发数只能是 1–4'; return; }
+  if (!confirm(`把并发数改成 ${n}？会重建容器（约 15 秒，正在跑的任务会被中断）。`)) return;
+  $('#clusterMsg').textContent = '正在写入并重建容器…';
+  const r = await papi('/panel/clusters', {method: 'POST', body: JSON.stringify({clusters: n})});
+  if (r.error) { $('#clusterMsg').textContent = '失败：' + r.error; return; }
+  $('#clusterInput').value = '';
+  $('#clusterMsg').textContent = `已生效：${r.clusters} 并发`;
+  loadSched();
+};
+async function renderAcctSched() {
+  const tb = $('#acctSched');
+  let accs = [];
+  try { accs = (await api('/accounts')).accounts || []; } catch (e) {}
+  const tasks = SCHED.accounts || {};
+  tb.innerHTML = accs.map(a => {
+    const t = tasks[a.index] || {};
+    return `<tr><td>${a.index}</td><td>${a.email}</td>
+      <td><span class="sw ${t.enabled ? 'on' : ''}" data-acctsw="${a.index}" style="display:inline-block"></span></td>
+      <td><input type="text" data-acctcron="${a.index}" value="${t.cron || ''}" placeholder="留空=不独立跑" style="width:150px"></td>
+      <td style="white-space:nowrap"><button class="btn sm" data-acctrun="${a.index}">立即运行</button></td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="hint">没有账号</td></tr>';
+  tb.querySelectorAll('[data-acctsw]').forEach(sw => sw.onclick = () => {
+    sw.classList.toggle('on');
+  });
+  tb.querySelectorAll('[data-acctrun]').forEach(b => b.onclick = async () => {
+    const r = await papi('/panel/run', {method: 'POST', body: JSON.stringify({account: Number(b.dataset.acctrun)})});
+    flash(r.ok ? `已启动账号 ${b.dataset.acctrun}` : ('启动失败：' + (r.error || '')), !r.ok);
+    setTimeout(loadStatus, 1500);
+  });
+}
+$('#saveAcctSched').onclick = async () => {
+  const accounts = {};
+  document.querySelectorAll('[data-acctcron]').forEach(inp => {
+    const idx = inp.dataset.acctcron;
+    const sw = document.querySelector(`[data-acctsw="${idx}"]`);
+    accounts[idx] = {enabled: sw && sw.classList.contains('on'), cron: inp.value.trim()};
+  });
+  const r = await fetch('/panel/schedule', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({enabled: SCHED.enabled, cron: $('#cronInput').value.trim(), accounts})});
+  const j = await r.json();
+  $('#acctSchedMsg').textContent = j.error || '账号计划已保存';
+  flash(j.error || '账号计划已保存', !!j.error);
+  loadSched();
+};
+$('#schedSw').onclick = () => { SCHED.enabled = !SCHED.enabled; $('#schedSw').classList.toggle('on', SCHED.enabled); };
+$('#saveSched').onclick = async () => {
+  const r = await fetch('/panel/schedule', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({enabled: SCHED.enabled, cron: $('#cronInput').value.trim()})});
+  const j = await r.json();
+  flash(j.error ? j.error : '计划已保存', !!j.error);
+  loadSched();
+};
+$('#runNow').onclick = async () => { await api('/start', {method: 'POST', body: '{}'}); flash('已发起运行'); setTimeout(loadStatus, 1500); };
+
+$('#startBtn').onclick = async () => {
+  const r = await api('/start', {method: 'POST', body: '{}'});
+  flash(r.error ? ('启动失败：' + r.error) : '已启动'); setTimeout(loadStatus, 1200);
+};
+$('#stopBtn').onclick = async () => {
+  if (!confirm('确定停止当前运行？')) return;
+  const r = await api('/stop', {method: 'POST', body: '{}'});
+  flash(r.error ? ('停止失败：' + r.error) : '已停止'); setTimeout(loadStatus, 1200);
+};
+
+document.querySelectorAll('#rangeChips .chip').forEach(c => {
+  c.onclick = () => {
+    const d = +c.dataset.days;
+    if (RANGE === d && STATS && STATS.days.length >= d) return;
+    RANGE = d;
+    document.querySelectorAll('#rangeChips .chip').forEach(x => x.classList.remove('on'));
+    c.classList.add('on');
+    loadStats();   // 必须重新拉数据：初始只加载了 7 天，直接重绘会一直是 7 个点
+  };
+});
+
+
+/* ---------- 推送 ---------- */
+let NOTIFY = {events: {}, channels: [], types: {}}, editingId = null;
+
+async function loadNotify() {
+  const r = await fetch('/panel/notify');
+  if (r.status === 401) { $('#login').style.display = 'flex'; return; }
+  NOTIFY = await r.json();
+  renderEvents(); renderChannels(); fillTypes();
+}
+
+function renderEvents() {
+  const ev = NOTIFY.events || {};
+  const box = $('#evToggles'); box.innerHTML = '';
+  const defs = [['on_finish', '运行结束推送', '成功后发送收益摘要'],
+                ['on_error', '失败告警', '退出码非 0 时推送'],
+                ['daily_summary', '每日汇总', '每天固定时间发一次当日收益']];
+  defs.forEach(([k, label, hint]) => {
+    const row = el('div', 'row');
+    const left = el('div');
+    left.append(el('div', '', label), el('div', 'hint', hint));
+    row.append(left);
+    const sw = el('div', 'sw' + (ev[k] ? ' on' : ''));
+    sw.onclick = () => {
+      sw.classList.toggle('on');
+      ev[k] = sw.classList.contains('on');
+      saveNotify();
+    };
+    row.append(sw); box.append(row);
+  });
+  $('#dailyTime').value = ev.daily_time || '10:00';
+}
+
+function fillTypes() {
+  const sel = $('#chType');
+  if (sel.options.length) return;
+  Object.entries(NOTIFY.types || {}).forEach(([k, v]) => {
+    const o = el('option', '', v.label); o.value = k; sel.append(o);
+  });
+  sel.onchange = () => openForm(null);
+}
+
+function renderChannels() {
+  const box = $('#chList'); box.innerHTML = '';
+  const list = NOTIFY.channels || [];
+  if (!list.length) {
+    box.append(el('div', 'empty', '还没有渠道，点右上角“添加渠道”'));
+    return;
+  }
+  list.forEach(ch => {
+    const row = el('div', 'row');
+    const left = el('div');
+    const tname = (NOTIFY.types[ch.type] || {}).label || ch.type;
+    left.append(el('div', '', `${ch.name || tname}  ·  ${tname}`));
+    let desc = ch.type === 'telegram' ? ('chat ' + (ch.config.chat_id || ''))
+      : (ch.config.server || ch.config.topic || ch.config.to || ch.config.url || '');
+    if (!desc || desc === '******') desc = '已配置（密钥不回显）';
+    left.append(el('div', 'hint', desc));
+    row.append(left);
+
+    const right = el('div', '', '');
+    right.style.cssText = 'display:flex;gap:8px;align-items:center';
+
+    const sw = el('div', 'sw' + (ch.enabled ? ' on' : ''));
+    sw.style.marginRight = '4px';
+    sw.onclick = () => { ch.enabled = !ch.enabled; sw.classList.toggle('on', ch.enabled); saveNotify(); };
+    right.append(sw);
+
+    const test = el('button', 'btn sm', '测试');
+    test.onclick = async () => {
+      test.disabled = true; test.textContent = '发送中…';
+      const r = await fetch('/panel/notify/test', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id: ch.id})});
+      const j = await r.json();
+      test.disabled = false; test.textContent = '测试';
+      const res = (j.results || [])[0];
+      flash(j.error || (res && res.ok ? '已发送，检查手机' : '发送失败：' + ((res && res.detail) || '未知')), !(res && res.ok));
+    };
+    right.append(test);
+
+    const edit = el('button', 'btn sm', '编辑');
+    edit.onclick = () => openForm(ch);
+    right.append(edit);
+
+    const del = el('button', 'btn sm danger', '删除');
+    del.onclick = () => {
+      if (!confirm('删除渠道 ' + (ch.name || ch.type) + '？')) return;
+      NOTIFY.channels = NOTIFY.channels.filter(x => x.id !== ch.id);
+      saveNotify().then(() => renderChannels());
+    };
+    right.append(del);
+    row.append(right);
+    box.append(row);
+  });
+}
+
+function openForm(ch) {
+  editingId = ch ? ch.id : null;
+  $('#chFormCard').style.display = 'block';
+  $('#chFormTitle').textContent = ch ? '编辑渠道' : '添加渠道';
+  const type = ch ? ch.type : ($('#chType').value || Object.keys(NOTIFY.types)[0]);
+  $('#chType').value = type;
+  $('#chType').disabled = !!ch;
+  $('#chName').value = ch ? (ch.name || '') : '';
+  const meta = NOTIFY.types[type] || {fields: [], hint: ''};
+  $('#chHint').textContent = meta.hint || '';
+  const box = $('#chFields'); box.innerHTML = '';
+  (meta.fields || []).forEach(([key, label, req, defv, secret]) => {
+    const wrap = el('div');
+    wrap.append(el('div', 'k', label + (req ? '' : '（可选）')));
+    wrap.lastChild.style.marginBottom = '6px';
+    const inp = el('input');
+    inp.type = secret ? 'password' : 'text';
+    inp.dataset.key = key;
+    const cur = ch && ch.config ? ch.config[key] : undefined;
+    inp.value = (cur !== undefined && cur !== null) ? cur : (defv || '');
+    inp.placeholder = defv || '';
+    wrap.append(inp);
+    box.append(wrap);
+  });
+  $('#chMsg').textContent = '';
+}
+
+$('#addChBtn').onclick = () => openForm(null);
+$('#chCancel').onclick = () => { $('#chFormCard').style.display = 'none'; $('#chType').disabled = false; };
+$('#chSave').onclick = async () => {
+  const type = $('#chType').value;
+  const name = $('#chName').value.trim();
+  const conf = {};
+  document.querySelectorAll('#chFields input').forEach(i => {
+    const v = i.value.trim();
+    if (v !== '' || !i.placeholder) conf[i.dataset.key] = v;
+  });
+  const ch = {id: editingId || ('ch' + Date.now()), type, name: name || (NOTIFY.types[type] || {}).label, enabled: true, config: conf};
+  if (editingId) {
+    const i = NOTIFY.channels.findIndex(x => x.id === editingId);
+    if (i >= 0) { ch.enabled = NOTIFY.channels[i].enabled; NOTIFY.channels[i] = ch; }
+  } else {
+    NOTIFY.channels.push(ch);
+  }
+  const r = await saveNotify();
+  if (r && r.ok) {
+    $('#chMsg').textContent = '已保存';
+    $('#chFormCard').style.display = 'none';
+    $('#chType').disabled = false;
+    renderChannels();
+  } else {
+    $('#chMsg').textContent = (r && r.error) || '保存失败';
+  }
+};
+
+async function saveNotify() {
+  $('#dailyTime').value && (NOTIFY.events.daily_time = $('#dailyTime').value.trim() || '10:00');
+  const r = await fetch('/panel/notify', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(NOTIFY)});
+  const j = await r.json();
+  if (!j.ok) flash(j.error || '保存失败', true);
+  else await loadNotify();
+  return j;
+}
+
+$('#dailyTime').onchange = () => saveNotify();
+
+function boot() {
+  loadStatus(); loadStats(); loadAccounts(); loadSched();
+  _lastStats = Date.now();
+  clearInterval(timer);
+  timer = setInterval(() => {
+    loadStatus();
+    // 收益/余额只在页面加载时拉过一次 → 跑完不刷新会一直显示旧数据（"第二个号还是 0 分"就是这么来的）
+    if (Date.now() - _lastStats > 60000) { _lastStats = Date.now(); loadStats(); loadAccounts(); }
+    if ($('#sec-logs').classList.contains('on')) loadLogs();
+  }, 4000);
+}
+// ---------- 镜像更新 ----------
+let updTimer = null;
+async function papi(path, opt = {}) {
+  const r = await fetch(path, {headers: {'Content-Type': 'application/json'}, ...opt});
+  if (r.status === 401) { $('#login').style.display = 'flex'; throw new Error('unauthorized'); }
+  const t = await r.text();
+  try { return JSON.parse(t); } catch { return {raw: t}; }
+}
+function paintUpdate(d) {
+  $('#updContainer').textContent = d.container || '容器未运行';
+  $('#updDerived').textContent = (d.derived?.tag || '—') + (d.derived?.sizeMB ? ' · ' + d.derived.sizeMB + ' MB' : '') + (d.derived?.created ? '\n构建于 ' + d.derived.created.replace('T', ' ') : '');
+  $('#updBase').textContent = (d.base?.tag || '—') + (d.base?.digest ? '\n' + d.base.digest : '');
+  $('#updFinished').textContent = d.finishedAt || '—';
+  $('#updLog').textContent = d.log || '—';
+  $('#updState').textContent = d.running ? '更新中…' : (d.exitCode === 0 ? '上次成功' : (d.exitCode === 1 ? '上次失败' : '空闲'));
+  $('#updRunBtn').disabled = !!d.running;
+  $('#updCheckBtn').disabled = !!d.running;
+  $('#updLog').scrollTop = $('#updLog').scrollHeight;
+  if (d.running && !updTimer) updTimer = setInterval(loadUpdate, 3000);
+  if (!d.running && updTimer) { clearInterval(updTimer); updTimer = null; }
+}
+async function loadUpdate() {
+  try { paintUpdate(await papi('/panel/update/status')); } catch (e) {}
+}
+$('#updRunBtn').onclick = async () => {
+  if (!confirm('立即更新？会重建镜像并重启容器（约 1–3 分钟），期间无法运行任务。')) return;
+  $('#updMsg').textContent = '正在启动…';
+  const r = await papi('/panel/update', {method: 'POST', body: '{}'});
+  $('#updMsg').textContent = r.message || r.error || '已提交';
+  loadUpdate();
+};
+$('#updCheckBtn').onclick = async () => {
+  $('#updMsg').textContent = '正在拉取官方镜像比对…（可能要几十秒）';
+  $('#updCheckBtn').disabled = true;
+  try {
+    const r = await papi('/panel/update/check', {method: 'POST', body: '{}'});
+    $('#updMsg').textContent = r.ok
+      ? `官方基础镜像已是最新（${r.baseDigest}，构建于 ${(r.baseCreated || '').replace('T', ' ')}）。点「立即更新」会重打补丁并重启容器。`
+      : (r.error || '检查失败');
+    loadUpdate();
+  } finally { $('#updCheckBtn').disabled = false; }
+};
+
+$('#selfUpdBtn').onclick = async () => {
+  if (!confirm('从仓库拉取最新面板代码并重启？页面会断开几秒。')) return;
+  const r = await papi('/panel/self-update', {method: 'POST', body: '{}'});
+  $('#selfMsg').textContent = r.message || r.error || '';
+  setTimeout(pollSelf, 1500);
+};
+$('#selfRestartBtn').onclick = async () => {
+  if (!confirm('重启面板服务？')) return;
+  const r = await papi('/panel/self-restart', {method: 'POST', body: '{}'});
+  $('#selfMsg').textContent = r.message || '';
+};
+function pollSelf() {
+  papi('/panel/self-update/status').then(d => {
+    $('#selfLog').textContent = d.log || '—';
+    $('#selfLog').scrollTop = $('#selfLog').scrollHeight;
+    if (d.running) setTimeout(pollSelf, 2500);
+    else if (d.log) $('#selfMsg').textContent = d.log.includes('✅') ? '更新完成，可刷新页面' : '更新失败（已回滚，见日志）';
+  }).catch(() => setTimeout(pollSelf, 3000));   // 面板重启期间会短暂失败
+}
+
+// ---------- 代理管理 ----------
+let pxData = {proxies: [], accounts: [], bindings: {}};
+async function loadProxies() {
+  try {
+    const d = await papi('/panel/proxies');
+    pxData = d;
+    const binds = d.bindings || {};
+    // 代理表
+    $('#pxTable').innerHTML = (d.proxies || []).map(p => {
+      const owners = (d.accounts || []).filter(a => binds[String(a.index)] === p.id)
+        .map(a => '#' + a.index).join(',') || '—';
+      const auth = p.type === 'socks5' ? 'IP 白名单' : (p.username ? '账号密码' : '无');
+      return `<tr><td>${p.name}</td><td>${p.type.toUpperCase()}</td>
+        <td>${p.host}:${p.port}</td><td>${auth}</td><td>${owners}</td>
+        <td style="white-space:nowrap"><button class="btn sm" data-pxtest="${p.id}">测试</button>
+        <button class="btn sm danger" data-pxdel="${p.id}">删除</button></td></tr>`;
+    }).join('') || '<tr><td colspan="6" class="hint">还没有代理，先在上面添加</td></tr>';
+    // 绑定表
+    $('#pxBind').innerHTML = (d.accounts || []).map(a => {
+      const bound = binds[String(a.index)];
+      const opts = ['<option value="none">不使用代理</option>'].concat(
+        (d.proxies || []).map(p => `<option value="${p.id}" ${bound === p.id ? 'selected' : ''}>${p.name}（${p.type}）</option>`));
+      const cur = a.proxy ? `${a.proxy.type}://${a.proxy.host}:${a.proxy.port}` : '直连（本机 IP）';
+      return `<tr><td>${a.index}</td><td>${a.email}</td><td>${cur}</td>
+        <td><select data-bind="${a.index}" style="padding:6px 8px;border:1px solid #ddd;border-radius:8px;min-width:170px">${opts.join('')}</select></td>
+        <td><button class="btn sm primary" data-pxsave="${a.index}">保存并重建</button></td></tr>`;
+    }).join('') || '<tr><td colspan="5" class="hint">没有账号</td></tr>';
+    document.querySelectorAll('[data-pxtest]').forEach(b => b.onclick = async () => {
+      $('#pxMsg').textContent = '测试中…';
+      const r = await papi('/panel/proxies/test', {method: 'POST', body: JSON.stringify({id: b.dataset.pxtest})});
+      $('#pxMsg').textContent = r.ok ? `连通 OK（HTTP ${r.httpCode}，${r.detail.split(' ')[1] || ''}s）` : `不通：${r.httpCode || ''} ${r.detail || ''}`;
+    });
+    document.querySelectorAll('[data-pxdel]').forEach(b => b.onclick = async () => {
+      if (!confirm('删除这个代理？绑定它的账号会同时解绑并重建容器。')) return;
+      const r = await papi('/panel/proxies/delete', {method: 'POST', body: JSON.stringify({id: b.dataset.pxdel})});
+      $('#pxMsg').textContent = r.error ? ('删除失败：' + r.error) : '已删除（容器已重建）';
+      loadProxies();
+    });
+    document.querySelectorAll('[data-pxsave]').forEach(b => b.onclick = async () => {
+      const idx = b.dataset.pxsave;
+      const sel = document.querySelector(`[data-bind="${idx}"]`);
+      if (!confirm(`把账号 #${idx} 的出口改成「${sel.options[sel.selectedIndex].textContent}」？会重建容器。`)) return;
+      $('#pxMsg').textContent = '正在写入并重建容器…';
+      const r = await papi('/panel/accounts/proxy', {method: 'POST', body: JSON.stringify({account: Number(idx), proxyId: sel.value})});
+      $('#pxMsg').textContent = r.error ? ('失败：' + r.error) : `已生效：账号 #${idx} → ${r.proxy ? r.proxy.name : '直连'}`;
+      loadProxies();
+    });
+  } catch (e) { $('#pxMsg').textContent = '读取失败：' + e.message; }
+}
+function pxForm() {
+  return {name: $('#pxName').value.trim(), type: $('#pxType').value, host: $('#pxHost').value.trim(),
+          port: $('#pxPort').value.trim(), username: $('#pxUser').value.trim(),
+          password: $('#pxPass').value, note: $('#pxNote').value.trim()};
+}
+$('#pxTestNew').onclick = async () => {
+  const f = pxForm();
+  if (!f.host || !f.port) { $('#pxMsg').textContent = '先填地址和端口'; return; }
+  $('#pxMsg').textContent = '测试中…（最长 18 秒）';
+  const r = await papi('/panel/proxies/test', {method: 'POST', body: JSON.stringify(f)});
+  $('#pxMsg').textContent = r.ok ? `连通 OK（HTTP ${r.httpCode}）` : `不通：${r.httpCode || ''} ${r.detail || ''}`;
+};
+$('#pxAdd').onclick = async () => {
+  const f = pxForm();
+  if (!f.host || !f.port) { $('#pxMsg').textContent = '先填地址和端口'; return; }
+  $('#pxMsg').textContent = '添加中…';
+  const r = await papi('/panel/proxies', {method: 'POST', body: JSON.stringify(f)});
+  if (r.error) { $('#pxMsg').textContent = '添加失败：' + r.error; return; }
+  ['pxName','pxHost','pxPort','pxUser','pxPass','pxNote'].forEach(id => $('#' + id).value = '');
+  $('#pxMsg').textContent = '已添加' + (r.test ? (r.test.ok ? '，连通正常' : '，但测试不通') : '');
+  loadProxies();
+};
+
+// ---------- 奖励中心 ----------
+let rwLoaded = false;
+async function initRewardAccounts() {
+  const sel = $('#rwAccount');
+  if (sel.options.length) return;
+  try {
+    const r = await api('/accounts');
+    (r.accounts || []).forEach(a => {
+      const o = document.createElement('option');
+      o.value = a.index;
+      o.textContent = `#${a.index} ${a.email}`;
+      sel.append(o);
+    });
+  } catch (e) {}
+}
+async function loadRewards() {
+  const acc = $('#rwAccount').value || '1';
+  $('#rwMsg').textContent = '读取中…（约 25 秒，要开浏览器登录 rewards.bing.com）';
+  try {
+    const r = await papi('/panel/rewards?account=' + encodeURIComponent(acc));
+    const d = r.data || {};
+    $('#rwPoints').textContent = d.points == null ? '—' : nf(d.points);
+    $('#rwToday').textContent = d.todayPoints == null ? '—' : '+' + nf(d.todayPoints);
+    $('#rwClaimable').textContent = d.claimable == null ? '—' : nf(d.claimable);
+    $('#rwDaily').textContent = d.dailyStreak == null ? '—' : d.dailyStreak + ' 天';
+    $('#rwRefer').textContent = d.refer && d.refer.invites != null
+      ? `${d.refer.invites} 人 · ${nf(d.refer.earned || 0)} 分` : '—';
+    $('#rwStreaks').innerHTML = (d.streaks || []).map(s => {
+      const pct = Math.round((s.days || 0) / (s.total || 7) * 100);
+      return `<tr><td>${s.name}</td><td><div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1;max-width:160px;height:6px;background:#eee;border-radius:4px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:#0a0a0a"></div></div>
+        <span>${s.days ?? '—'}/${s.total || 7}</span></div></td>
+        <td>${s.nextReward ? '+' + s.nextReward : '—'}</td></tr>`;
+    }).join('') || '<tr><td colspan="3" class="hint">没有读到连胜数据</td></tr>';
+    const errs = (d.errors || []).filter(Boolean);
+    $('#rwMsg').textContent = d.ok
+      ? `已更新 · ${new Date().toLocaleTimeString('zh-CN')}` + (d.claimable > 0 ? ' · 有可领取，点「领取」' : ' · 暂无可领取')
+      : '读取失败：' + (errs[0] || '未知错误');
+    if (d.ok) rwLoaded = true;
+  } catch (e) { $('#rwMsg').textContent = '读取失败：' + e.message; }
+}
+async function loadRewardsConf() {
+  try {
+    const c = await papi('/panel/rewards/config');
+    $('#rwAuto').value = c.autoClaim ? '1' : '0';
+    $('#rwCron').value = c.cron || '10 9 * * *';
+  } catch (e) {}
+}
+$('#rwRefresh').onclick = loadRewards;
+$('#rwAccount').onchange = loadRewards;
+$('#rwClaim').onclick = async () => {
+  const acc = $('#rwAccount').value || '1';
+  if (!confirm('立即到 rewards.bing.com 领取可领积分？约 30 秒。')) return;
+  $('#rwMsg').textContent = '正在领取…';
+  const r = await papi('/panel/rewards/claim', {method: 'POST', body: JSON.stringify({account: Number(acc)})});
+  const d = r.data || {};
+  $('#rwMsg').textContent = d.ok
+    ? `领取完成：${(d.claimed || []).length ? '点掉 ' + d.claimed.length + ' 个' : '没有可领取项'} · 当前可领取 ${d.claimable ?? '—'}`
+    : '领取失败：' + ((d.errors || [])[0] || '未知');
+  loadRewards();
+};
+$('#rwSave').onclick = async () => {
+  const r = await papi('/panel/rewards/config', {method: 'POST', body: JSON.stringify({
+    autoClaim: $('#rwAuto').value === '1', cron: $('#rwCron').value.trim()})});
+  $('#rwMsg').textContent = r.error ? ('保存失败：' + r.error) : '已保存自动领取设置';
+};
+
+(async () => {
+  try {
+    const r = await fetch('/api/status');
+    if (r.status === 200) { $('#login').style.display = 'none'; boot(); }
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>
