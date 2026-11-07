@@ -224,6 +224,113 @@ def start_self_restart():
     return True, "面板将在 1 秒后重启"
 
 
+SESS_DB = "/root/microsoft-rewards-script/sessions/sessions.db"
+RC_SCRIPT = "/root/ms-panel/rewards-center.js"
+RC_CACHE = {}
+RC_LOCK = threading.Lock()
+
+
+def export_cookies(email):
+    """从 v5 的 sessions.db 导出该账号 desktop 会话 cookie 为 Playwright 格式 JSON。"""
+    import sqlite3
+    con = sqlite3.connect(f"file:{SESS_DB}?mode=ro", uri=True)
+    try:
+        row = con.execute(
+            "select storage_state from sessions where email=? and platform='desktop'", (email,)
+        ).fetchone()
+    finally:
+        con.close()
+    if not row:
+        raise RuntimeError(f"{email} 没有 desktop 会话（可能需先跑一次登录）")
+    st = json.loads(row[0])
+    out = []
+    for c in st.get("cookies") or []:
+        ss = c.get("sameSite")
+        item = {
+            "name": c["name"], "value": c["value"], "domain": c["domain"],
+            "path": c.get("path") or "/", "secure": bool(c.get("secure")),
+            "httpOnly": bool(c.get("httpOnly")),
+            "sameSite": ss if ss in ("Strict", "Lax", "None") else "Lax",
+        }
+        if isinstance(c.get("expires"), (int, float)) and c["expires"] > 0:
+            item["expires"] = float(c["expires"])
+        out.append(item)
+    local = str(email).split("@")[0]
+    path = f"/root/ms-rewards-probe/cookies_{local}.json"
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(out, f)
+    return path
+
+
+def rewards_run(email, claim=False, use_cache=True):
+    """在 API 容器里跑 rewards-center.js，返回结构化 dict。单账号约 25 秒。"""
+    key = str(email).split("@")[0]
+    if use_cache and not claim:
+        hit = RC_CACHE.get(key)
+        if hit and time.time() - hit[0] < 120:
+            return hit[1]
+    with RC_LOCK:
+        try:
+            ck = export_cookies(email)
+        except Exception as e:
+            return {"ok": False, "errors": [str(e)]}
+        sh(f"docker cp {ck} ms-rewards-api:/tmp/rc-cookies.json", timeout=20)
+        sh(f"docker cp {RC_SCRIPT} ms-rewards-api:/tmp/rewards-center.js", timeout=20)
+        flag = "--claim" if claim else ""
+        rc, out = sh(
+            "docker exec -e PLAYWRIGHT_BROWSERS_PATH=/usr/src/microsoft-rewards-script/node_modules/"
+            f"patchright-core/.local-browsers ms-rewards-api node /tmp/rewards-center.js /tmp/rc-cookies.json {flag}",
+            timeout=240,
+        )
+    data = {"ok": False, "errors": [out.strip()[-400:] or "无输出"]}
+    for line in reversed((out or "").strip().splitlines()):
+        line = line.strip()
+        if line.startswith("{") and line.endswith("}"):
+            try:
+                data = json.loads(line)
+                break
+            except Exception:
+                continue
+    if not claim:
+        RC_CACHE[key] = (time.time(), data)
+    return data
+
+
+def rewards_conf():
+    return load_json(os.path.join(BASE, "rewards.json"),
+                     {"autoClaim": True, "cron": "10 9 * * *", "accounts": [1, 2]})
+
+
+def account_email(idx):
+    for a in env_accounts():
+        if int(a.get("index") or 0) == int(idx):
+            return a.get("email")
+    return None
+
+
+def rewards_loop():
+    """每天定时：有可领取就先查再领（只在 claimable>0 时才进浏览器领取）。"""
+    last = ""
+    while True:
+        try:
+            cfg = rewards_conf()
+            cron = (cfg.get("cron") or "").strip()
+            if cfg.get("autoClaim") and cron:
+                tm = time.localtime()
+                stamp = time.strftime("%Y%m%d%H%M", tm)
+                if cron_match(cron, tm) and last != stamp:
+                    last = stamp
+                    for idx in cfg.get("accounts") or []:
+                        email = account_email(idx)
+                        if not email:
+                            continue
+                        d = rewards_run(email, claim=True, use_cache=False)
+                        log(f"[rewards] {email} 领取={d.get('claimed')} 可领取={d.get('claimable')} 错误={d.get('errors')}")
+        except Exception as e:
+            log("[rewards] 自动领取异常", e)
+        time.sleep(30)
+
+
 def load_kv(path):
     out = {}
     with open(path, "r", encoding="utf-8") as f:
@@ -855,6 +962,17 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authed():
             return self.send_json(401, {"error": "unauthorized"})
 
+        if p == "/panel/rewards":
+            qs = parse_qs(u.query)
+            idx = int((qs.get("account") or ["1"])[0])
+            email = account_email(idx)
+            if not email:
+                return self.send_json(404, {"error": f"账号 {idx} 不存在"})
+            return self.send_json(200, {"email": email, "account": idx, "data": rewards_run(email)})
+
+        if p == "/panel/rewards/config":
+            return self.send_json(200, rewards_conf())
+
         if p == "/panel/update/status":
             return self.send_json(200, update_status())
 
@@ -995,6 +1113,32 @@ class Handler(BaseHTTPRequestHandler):
 
         if not self.authed():
             return self.send_json(401, {"error": "unauthorized"})
+
+        if p == "/panel/rewards/claim":
+            try:
+                payload = json.loads(body or b"{}")
+            except Exception:
+                payload = {}
+            idx = int(payload.get("account") or 1)
+            email = account_email(idx)
+            if not email:
+                return self.send_json(404, {"error": f"账号 {idx} 不存在"})
+            return self.send_json(200, {"email": email, "data": rewards_run(email, claim=True, use_cache=False)})
+
+        if p == "/panel/rewards/config":
+            try:
+                payload = json.loads(body or b"{}")
+            except Exception:
+                return self.send_json(400, {"error": "bad json"})
+            cfg = rewards_conf()
+            if "autoClaim" in payload:
+                cfg["autoClaim"] = bool(payload.get("autoClaim"))
+            if str(payload.get("cron") or "").strip():
+                if len(str(payload["cron"]).split()) != 5:
+                    return self.send_json(400, {"error": "cron 需要 5 段，例如 10 9 * * *"})
+                cfg["cron"] = str(payload["cron"]).strip()
+            save_json(os.path.join(BASE, "rewards.json"), cfg)
+            return self.send_json(200, cfg)
 
         if p == "/panel/self-update":
             ok, msg = start_self_update()
@@ -1198,6 +1342,7 @@ def main():
     if not os.path.exists(SCHED):
         save_json(SCHED, {"enabled": True, "cron": "0 7 * * *"})
     threading.Thread(target=scheduler_loop, daemon=True).start()
+    threading.Thread(target=rewards_loop, daemon=True).start()
     threading.Thread(target=collector_loop, daemon=True).start()
     threading.Thread(target=notify_loop, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)

@@ -209,6 +209,7 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
       <button data-sec="sched">运行计划</button>
       <button data-sec="notify">推送渠道</button>
       <button data-sec="update">镜像更新</button>
+      <button data-sec="rewards">奖励中心</button>
     </nav>
     <div class="side-foot">
       <div class="stat"><span>调度</span><span id="footSched">—</span></div>
@@ -410,6 +411,47 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
         </div>
       </div>
     </div>
+    <div class="sec" id="sec-rewards">
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h">
+          <h3>奖励中心</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="rwAccount" style="padding:6px 8px;border:1px solid #ddd;border-radius:8px"></select>
+            <button class="btn sm" id="rwRefresh">刷新</button>
+            <button class="btn sm primary" id="rwClaim">领取</button>
+          </div>
+        </div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:6px">
+          <div><div class="k">可用积分</div><div class="v" id="rwPoints">—</div></div>
+          <div><div class="k">今日已赚</div><div class="v" id="rwToday">—</div></div>
+          <div><div class="k">可领取</div><div class="v" id="rwClaimable">—</div></div>
+          <div><div class="k">每日打卡</div><div class="v" id="rwDaily">—</div></div>
+          <div><div class="k">邀请好友</div><div class="v" id="rwRefer">—</div></div>
+        </div>
+        <div class="hint" id="rwMsg" style="margin-top:10px">—</div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h"><h3>连胜进度</h3><span class="hint">连续 7 天有额外奖励，12 个印章换 1000 分</span></div>
+        <table><thead><tr><th>任务</th><th>进度</th><th>下一档奖励</th></tr></thead>
+        <tbody id="rwStreaks"></tbody></table>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>自动领取</h3><span class="hint">每天定时检查，有可领取就自动点掉</span></div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+          <div><div class="k" style="margin-bottom:6px">开关</div>
+            <select id="rwAuto"><option value="1">开启</option><option value="0">关闭</option></select></div>
+          <div><div class="k" style="margin-bottom:6px">时间（cron）</div>
+            <input type="text" id="rwCron" placeholder="10 9 * * *"></div>
+          <div style="display:flex;align-items:flex-end"><button class="btn primary" id="rwSave">保存</button></div>
+        </div>
+        <div class="hint" style="margin-top:10px">
+          每日 09:10 跑（积分任务 07:00 开跑、约 08:10 结束，避开冲突）。月初 1–5 号福利到账时也会自动领。
+        </div>
+      </div>
+    </div>
+
     <div class="sec" id="sec-update">
       <div class="card" style="margin-bottom:14px">
         <div class="card-h"><h3>当前版本</h3><span class="hint">派生镜像 = 官方 v5 + cn.bing.com 补丁 + 瘦身</span></div>
@@ -498,6 +540,7 @@ document.querySelectorAll('nav button').forEach(b => {
     if (b.dataset.sec === 'notify') loadNotify();
     if (b.dataset.sec === 'acct') loadAccounts();
     if (b.dataset.sec === 'update') loadUpdate();
+    if (b.dataset.sec === 'rewards') { initRewardAccounts(); loadRewardsConf(); loadRewards(); }
   };
 });
 
@@ -1235,6 +1278,74 @@ function pollSelf() {
     else if (d.log) $('#selfMsg').textContent = d.log.includes('✅') ? '更新完成，可刷新页面' : '更新失败（已回滚，见日志）';
   }).catch(() => setTimeout(pollSelf, 3000));   // 面板重启期间会短暂失败
 }
+
+// ---------- 奖励中心 ----------
+let rwLoaded = false;
+async function initRewardAccounts() {
+  const sel = $('#rwAccount');
+  if (sel.options.length) return;
+  try {
+    const r = await api('/accounts');
+    (r.accounts || []).forEach(a => {
+      const o = document.createElement('option');
+      o.value = a.index;
+      o.textContent = `#${a.index} ${a.email}`;
+      sel.append(o);
+    });
+  } catch (e) {}
+}
+async function loadRewards() {
+  const acc = $('#rwAccount').value || '1';
+  $('#rwMsg').textContent = '读取中…（约 25 秒，要开浏览器登录 rewards.bing.com）';
+  try {
+    const r = await papi('/panel/rewards?account=' + encodeURIComponent(acc));
+    const d = r.data || {};
+    $('#rwPoints').textContent = d.points == null ? '—' : nf(d.points);
+    $('#rwToday').textContent = d.todayPoints == null ? '—' : '+' + nf(d.todayPoints);
+    $('#rwClaimable').textContent = d.claimable == null ? '—' : nf(d.claimable);
+    $('#rwDaily').textContent = d.dailyStreak == null ? '—' : d.dailyStreak + ' 天';
+    $('#rwRefer').textContent = d.refer && d.refer.invites != null
+      ? `${d.refer.invites} 人 · ${nf(d.refer.earned || 0)} 分` : '—';
+    $('#rwStreaks').innerHTML = (d.streaks || []).map(s => {
+      const pct = Math.round((s.days || 0) / (s.total || 7) * 100);
+      return `<tr><td>${s.name}</td><td><div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1;max-width:160px;height:6px;background:#eee;border-radius:4px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:#0a0a0a"></div></div>
+        <span>${s.days ?? '—'}/${s.total || 7}</span></div></td>
+        <td>${s.nextReward ? '+' + s.nextReward : '—'}</td></tr>`;
+    }).join('') || '<tr><td colspan="3" class="hint">没有读到连胜数据</td></tr>';
+    const errs = (d.errors || []).filter(Boolean);
+    $('#rwMsg').textContent = d.ok
+      ? `已更新 · ${new Date().toLocaleTimeString('zh-CN')}` + (d.claimable > 0 ? ' · 有可领取，点「领取」' : ' · 暂无可领取')
+      : '读取失败：' + (errs[0] || '未知错误');
+    if (d.ok) rwLoaded = true;
+  } catch (e) { $('#rwMsg').textContent = '读取失败：' + e.message; }
+}
+async function loadRewardsConf() {
+  try {
+    const c = await papi('/panel/rewards/config');
+    $('#rwAuto').value = c.autoClaim ? '1' : '0';
+    $('#rwCron').value = c.cron || '10 9 * * *';
+  } catch (e) {}
+}
+$('#rwRefresh').onclick = loadRewards;
+$('#rwAccount').onchange = loadRewards;
+$('#rwClaim').onclick = async () => {
+  const acc = $('#rwAccount').value || '1';
+  if (!confirm('立即到 rewards.bing.com 领取可领积分？约 30 秒。')) return;
+  $('#rwMsg').textContent = '正在领取…';
+  const r = await papi('/panel/rewards/claim', {method: 'POST', body: JSON.stringify({account: Number(acc)})});
+  const d = r.data || {};
+  $('#rwMsg').textContent = d.ok
+    ? `领取完成：${(d.claimed || []).length ? '点掉 ' + d.claimed.length + ' 个' : '没有可领取项'} · 当前可领取 ${d.claimable ?? '—'}`
+    : '领取失败：' + ((d.errors || [])[0] || '未知');
+  loadRewards();
+};
+$('#rwSave').onclick = async () => {
+  const r = await papi('/panel/rewards/config', {method: 'POST', body: JSON.stringify({
+    autoClaim: $('#rwAuto').value === '1', cron: $('#rwCron').value.trim()})});
+  $('#rwMsg').textContent = r.error ? ('保存失败：' + r.error) : '已保存自动领取设置';
+};
 
 (async () => {
   try {
