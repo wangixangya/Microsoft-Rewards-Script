@@ -887,7 +887,7 @@ async function fillRunAcct() {
     if (!sel) return;
     const cur = sel.value;
     sel.innerHTML = '<option value="">全部账号</option>' +
-      (d.accounts || []).map(a => `<option value="${a.email}">${a.note ? a.note + '（' + a.email + '）' : a.email}</option>`).join('');
+      (d.accounts || []).map(a => `<option value="${a.email}">${a.note || a.email}</option>`).join('');
     if (cur) sel.value = cur;
   } catch (e) {}
 }
@@ -982,7 +982,7 @@ function renderAcctSeg() {
     return b;
   };
   box.append(mk('all', '全部账号'));
-  ACCTS.forEach(a => box.append(mk(a, NOTES[a] ? `${a} · ${NOTES[a]}` : a)));
+  ACCTS.forEach(a => box.append(mk(a, NOTES[a] || a)));
 }
 
 function dayTotal(d) {
