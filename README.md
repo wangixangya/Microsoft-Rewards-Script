@@ -26,7 +26,7 @@
 |---|---|---|
 | 🧭 **能跑通** | 国内 IP 访问 Bing 会被 302 跳转，上游写死的 `www.bing.com` 判断永远匹配不上，桌面搜索直接 45 秒超时放弃。本分支在 `dist` 层做了 host 判定补丁，**不碰 API 请求逻辑**，随上游更新可重新打补丁。 | Bing redirects CN traffic to `cn.bing.com`, which never matches upstream's hard-coded origin check — desktop search times out and gives up. This branch patches the host comparison only, leaving request logic untouched. |
 | 🖥 **看得见** | 自带中文 Web 控制台：总览、账号会话、运行日志、任务开关、奖励中心、设置，手机浏览器就能管。 | A bilingual web console: dashboard, accounts & sessions, live logs, task switches, rewards center, settings — manageable from a phone. |
-| 🪶 **更轻** | 只保留 headless 浏览器与运行期依赖，图片从 1.34 GB 压到 **763 MB**，空载内存 **34 MiB**，单账号运行峰值约 **825 MiB**（实测）。 | Only the headless browser and runtime deps survive. Image: 1.34 GB → **763 MB**. Idle memory **34 MiB**; one account peaks at **825 MiB** (measured). |
+| 🪶 **更轻** | 只保留 headless 浏览器与运行期依赖，图片从 1.34 GB 压到 **763 MB**，空载内存 **34 MiB**，单账号运行峰值 **1.19 GiB**（实测 120s 采样）。 | Only the headless browser and runtime deps survive. Image: 1.34 GB → **763 MB**. Idle memory **34 MiB**; one account peaks at **1.19 GiB** (measured). |
 
 ---
 
