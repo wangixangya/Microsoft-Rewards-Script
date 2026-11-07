@@ -1674,7 +1674,7 @@ async function saveNotify() {
 $('#dailyTime').onchange = () => saveNotify();
 
 function boot() {
-  loadStatus(); loadStats(); loadAccounts(); loadSched();
+  loadStatus(); loadStats(); loadAccounts(); loadSched(); loadSystem();
   _lastStats = Date.now();
   clearInterval(timer);
   timer = setInterval(() => {
