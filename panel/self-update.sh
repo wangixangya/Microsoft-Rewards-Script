@@ -19,8 +19,16 @@ trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/new"
 
 say "[1/4] 拉取远端 panel/ 文件…"
+# 面板由 systemd 启动，环境里带 https_proxy（指向常失效的 mihomo）且可能没有 HOME，
+# gh 会因此认不到凭据。这里显式取 token、清代理、固定 HOME。
+export HOME=/root
+GH_TOKEN=$(awk '/oauth_token:/{print $2; exit}' /root/.config/gh/hosts.yml 2>/dev/null)
+if [ -z "$GH_TOKEN" ]; then say "❌ 取不到 GitHub token（/root/.config/gh/hosts.yml），已中止"; exit 2; fi
+export GH_TOKEN
+gnoh() { env -u http_proxy -u https_proxy -u all_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY "$@"; }
+
 for f in $FILES; do
-  if ! gh api "repos/$REPO/contents/panel/$f?ref=$REF" --jq '.content' 2>>"$LOG" | base64 -d > "$TMP/new/$f" 2>>"$LOG"; then
+  if ! gnoh gh api "repos/$REPO/contents/panel/$f?ref=$REF" --jq '.content' 2>>"$LOG" | base64 -d > "$TMP/new/$f" 2>>"$LOG"; then
     say "❌ 拉取 $f 失败，已中止（面板未改动）"; exit 2
   fi
   if [ ! -s "$TMP/new/$f" ]; then
