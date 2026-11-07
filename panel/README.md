@@ -65,3 +65,12 @@ POST   /panel/notify/test       发送测试 {id?}
 - `microsoft-rewards-script`（旧 cron 容器）和 `ms-rewards-api` 共用 config/sessions 卷，**不能同时运行**，否则同账号双跑抢积分、易触发风控。
 - `panel.conf`、`env.list`、`notify.json` 含凭据，已在 `.gitignore` 里，别提交。
 - 推送里的密钥保存后回显为 `******`，保存时原样回传即表示“沿用旧值”。
+
+## v2.6.0 新增
+
+- 总览：系统状态卡（CPU / 内存 / 磁盘 / 温度 / 容器 / 运行时长）
+- 运行日志：运行历史表（开始、耗时、退出码、得分）+ 自动刷新开关
+- 设置 → 备份与恢复：配置打包成 zip、列表下载、一键回滚（回滚前自动留档）
+- 设置 → 发布中心：可一键重建 JS 单文件、直达 GitHub Release
+- 账号页：每行「密码/2FA」按钮，可直接改 env.list 并重建容器
+- 推送：Telegram 渠道支持代理（自动读 `TELEGRAM_PROXY`），解决直连超时
