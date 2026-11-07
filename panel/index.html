@@ -210,6 +210,7 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
       <button data-sec="notify">推送渠道</button>
       <button data-sec="update">镜像更新</button>
       <button data-sec="rewards">奖励中心</button>
+      <button data-sec="proxy">代理管理</button>
     </nav>
     <div class="side-foot">
       <div class="stat"><span>调度</span><span id="footSched">—</span></div>
@@ -411,6 +412,42 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
         </div>
       </div>
     </div>
+    <div class="sec" id="sec-proxy">
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h"><h3>添加代理</h3><span class="hint">只支持长效（静态）代理；SOCKS5 不能带账号密码</span></div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
+          <div><div class="k" style="margin-bottom:6px">名称（可选）</div><input type="text" id="pxName" placeholder="例如 电信长效1"></div>
+          <div><div class="k" style="margin-bottom:6px">类型</div>
+            <select id="pxType"><option value="socks5">SOCKS5</option><option value="http">HTTP</option></select></div>
+          <div><div class="k" style="margin-bottom:6px">地址 / IP</div><input type="text" id="pxHost" placeholder="1.2.3.4 或 proxy.example.com"></div>
+          <div><div class="k" style="margin-bottom:6px">端口</div><input type="text" id="pxPort" placeholder="1080"></div>
+          <div><div class="k" style="margin-bottom:6px">用户名（HTTP 才填）</div><input type="text" id="pxUser" placeholder="留空"></div>
+          <div><div class="k" style="margin-bottom:6px">密码</div><input type="password" id="pxPass" placeholder="留空"></div>
+          <div><div class="k" style="margin-bottom:6px">备注</div><input type="text" id="pxNote" placeholder="出口地区 / 到期时间"></div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <button class="btn" id="pxTestNew">测试连通性</button>
+          <button class="btn primary" id="pxAdd">添加代理</button>
+          <span class="hint" id="pxMsg"></span>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-h"><h3>代理列表</h3><span class="hint">删除会自动解除该代理上的账号绑定</span></div>
+        <table><thead><tr><th>名称</th><th>类型</th><th>地址</th><th>认证</th><th>绑定账号</th><th>操作</th></tr></thead>
+        <tbody id="pxTable"></tbody></table>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>账号绑定</h3><span class="hint">保存后会重建容器（约 15 秒）</span></div>
+        <table><thead><tr><th>#</th><th>账号</th><th>当前出口</th><th>绑定代理</th><th></th></tr></thead>
+        <tbody id="pxBind"></tbody></table>
+        <div class="hint" style="margin-top:10px">
+          绑定后该账号的浏览器与 HTTP 请求都走这个代理。换 IP 前后的登录可能触发风控，建议固定同一个长效代理长期使用，不要频繁切换。
+        </div>
+      </div>
+    </div>
+
     <div class="sec" id="sec-rewards">
       <div class="card" style="margin-bottom:14px">
         <div class="card-h">
@@ -541,6 +578,7 @@ document.querySelectorAll('nav button').forEach(b => {
     if (b.dataset.sec === 'acct') loadAccounts();
     if (b.dataset.sec === 'update') loadUpdate();
     if (b.dataset.sec === 'rewards') { initRewardAccounts(); loadRewardsConf(); loadRewards(); }
+    if (b.dataset.sec === 'proxy') loadProxies();
   };
 });
 
@@ -1278,6 +1316,78 @@ function pollSelf() {
     else if (d.log) $('#selfMsg').textContent = d.log.includes('✅') ? '更新完成，可刷新页面' : '更新失败（已回滚，见日志）';
   }).catch(() => setTimeout(pollSelf, 3000));   // 面板重启期间会短暂失败
 }
+
+// ---------- 代理管理 ----------
+let pxData = {proxies: [], accounts: [], bindings: {}};
+async function loadProxies() {
+  try {
+    const d = await papi('/panel/proxies');
+    pxData = d;
+    const binds = d.bindings || {};
+    // 代理表
+    $('#pxTable').innerHTML = (d.proxies || []).map(p => {
+      const owners = (d.accounts || []).filter(a => binds[String(a.index)] === p.id)
+        .map(a => '#' + a.index).join(',') || '—';
+      const auth = p.type === 'socks5' ? 'IP 白名单' : (p.username ? '账号密码' : '无');
+      return `<tr><td>${p.name}</td><td>${p.type.toUpperCase()}</td>
+        <td>${p.host}:${p.port}</td><td>${auth}</td><td>${owners}</td>
+        <td style="white-space:nowrap"><button class="btn sm" data-pxtest="${p.id}">测试</button>
+        <button class="btn sm danger" data-pxdel="${p.id}">删除</button></td></tr>`;
+    }).join('') || '<tr><td colspan="6" class="hint">还没有代理，先在上面添加</td></tr>';
+    // 绑定表
+    $('#pxBind').innerHTML = (d.accounts || []).map(a => {
+      const bound = binds[String(a.index)];
+      const opts = ['<option value="none">不使用代理</option>'].concat(
+        (d.proxies || []).map(p => `<option value="${p.id}" ${bound === p.id ? 'selected' : ''}>${p.name}（${p.type}）</option>`));
+      const cur = a.proxy ? `${a.proxy.type}://${a.proxy.host}:${a.proxy.port}` : '直连（本机 IP）';
+      return `<tr><td>${a.index}</td><td>${a.email}</td><td>${cur}</td>
+        <td><select data-bind="${a.index}" style="padding:6px 8px;border:1px solid #ddd;border-radius:8px;min-width:170px">${opts.join('')}</select></td>
+        <td><button class="btn sm primary" data-pxsave="${a.index}">保存并重建</button></td></tr>`;
+    }).join('') || '<tr><td colspan="5" class="hint">没有账号</td></tr>';
+    document.querySelectorAll('[data-pxtest]').forEach(b => b.onclick = async () => {
+      $('#pxMsg').textContent = '测试中…';
+      const r = await papi('/panel/proxies/test', {method: 'POST', body: JSON.stringify({id: b.dataset.pxtest})});
+      $('#pxMsg').textContent = r.ok ? `连通 OK（HTTP ${r.httpCode}，${r.detail.split(' ')[1] || ''}s）` : `不通：${r.httpCode || ''} ${r.detail || ''}`;
+    });
+    document.querySelectorAll('[data-pxdel]').forEach(b => b.onclick = async () => {
+      if (!confirm('删除这个代理？绑定它的账号会同时解绑并重建容器。')) return;
+      const r = await papi('/panel/proxies/delete', {method: 'POST', body: JSON.stringify({id: b.dataset.pxdel})});
+      $('#pxMsg').textContent = r.error ? ('删除失败：' + r.error) : '已删除（容器已重建）';
+      loadProxies();
+    });
+    document.querySelectorAll('[data-pxsave]').forEach(b => b.onclick = async () => {
+      const idx = b.dataset.pxsave;
+      const sel = document.querySelector(`[data-bind="${idx}"]`);
+      if (!confirm(`把账号 #${idx} 的出口改成「${sel.options[sel.selectedIndex].textContent}」？会重建容器。`)) return;
+      $('#pxMsg').textContent = '正在写入并重建容器…';
+      const r = await papi('/panel/accounts/proxy', {method: 'POST', body: JSON.stringify({account: Number(idx), proxyId: sel.value})});
+      $('#pxMsg').textContent = r.error ? ('失败：' + r.error) : `已生效：账号 #${idx} → ${r.proxy ? r.proxy.name : '直连'}`;
+      loadProxies();
+    });
+  } catch (e) { $('#pxMsg').textContent = '读取失败：' + e.message; }
+}
+function pxForm() {
+  return {name: $('#pxName').value.trim(), type: $('#pxType').value, host: $('#pxHost').value.trim(),
+          port: $('#pxPort').value.trim(), username: $('#pxUser').value.trim(),
+          password: $('#pxPass').value, note: $('#pxNote').value.trim()};
+}
+$('#pxTestNew').onclick = async () => {
+  const f = pxForm();
+  if (!f.host || !f.port) { $('#pxMsg').textContent = '先填地址和端口'; return; }
+  $('#pxMsg').textContent = '测试中…（最长 18 秒）';
+  const r = await papi('/panel/proxies/test', {method: 'POST', body: JSON.stringify(f)});
+  $('#pxMsg').textContent = r.ok ? `连通 OK（HTTP ${r.httpCode}）` : `不通：${r.httpCode || ''} ${r.detail || ''}`;
+};
+$('#pxAdd').onclick = async () => {
+  const f = pxForm();
+  if (!f.host || !f.port) { $('#pxMsg').textContent = '先填地址和端口'; return; }
+  $('#pxMsg').textContent = '添加中…';
+  const r = await papi('/panel/proxies', {method: 'POST', body: JSON.stringify(f)});
+  if (r.error) { $('#pxMsg').textContent = '添加失败：' + r.error; return; }
+  ['pxName','pxHost','pxPort','pxUser','pxPass','pxNote'].forEach(id => $('#' + id).value = '');
+  $('#pxMsg').textContent = '已添加' + (r.test ? (r.test.ok ? '，连通正常' : '，但测试不通') : '');
+  loadProxies();
+};
 
 // ---------- 奖励中心 ----------
 let rwLoaded = false;

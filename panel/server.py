@@ -682,6 +682,12 @@ def env_accounts():
             "geoLocale": d.get("GEO_LOCALE", ""),
             "hasPassword": bool(d.get("PASSWORD")),
             "hasTotp": bool(d.get("TOTP_SECRET")),
+            "proxy": ({
+                "type": (d.get("PROXY_URL", "").split("://")[0] or "http"),
+                "host": d.get("PROXY_URL", "").split("://")[-1].split("/")[0],
+                "port": d.get("PROXY_PORT", ""),
+                "username": d.get("PROXY_USERNAME", ""),
+            } if d.get("PROXY_URL") else None),
         })
     return out
 
@@ -742,8 +748,137 @@ def remove_account(idx):
     return {"ok": True, "removed": accs[idx]["email"]}
 
 
+# ---------- 代理管理（仅长效/静态 socks5 + http，按账号绑定） ----------
+PROXIES = os.path.join(BASE, "proxies.json")
+PROXY_ENV_RE = r"^ACCOUNT_{}_PROXY_(?:URL|PORT|USERNAME|PASSWORD|HTTP|AXIOS)="
+
+
+def proxies_all():
+    data = load_json(PROXIES, {"proxies": []})
+    if isinstance(data, dict):
+        return data.get("proxies") or []
+    return data or []
+
+
+def proxies_write(lst):
+    save_json(PROXIES, {"proxies": lst})
+
+
+def _proxy_public(p):
+    return {
+        "id": p["id"], "name": p.get("name") or p["host"],
+        "type": p.get("type", "http"), "host": p.get("host"), "port": p.get("port"),
+        "username": p.get("username") or "", "hasPassword": bool(p.get("password")),
+        "note": p.get("note") or "", "createdAt": p.get("createdAt", ""),
+    }
+
+
+def account_proxy(idx):
+    """读 env.list 里该账号当前代理，返回 {url, port, username, hasPassword, type, host} 或 None。"""
+    url = port = user = pwd = ""
+    for line in env_lines():
+        m = re.match(rf"^ACCOUNT_{idx}_PROXY_(URL|PORT|USERNAME|PASSWORD)=(.*)$", line)
+        if not m:
+            continue
+        k, v = m.group(1), m.group(2).strip()
+        if k == "URL":
+            url = v
+        elif k == "PORT":
+            port = v
+        elif k == "USERNAME":
+            user = v
+        elif k == "PASSWORD":
+            pwd = v
+    if not url:
+        return None
+    scheme = url.split("://")[0] if "://" in url else "http"
+    host = url.split("://")[-1].split("/")[0]
+    return {"type": scheme, "host": host, "port": port or "", "username": user,
+            "hasPassword": bool(pwd), "url": url}
+
+
+def set_account_proxy(idx, proxy):
+    """把代理写进/清出 env.list（ACCOUNT_N_PROXY_*）；proxy=None 表示解除绑定。"""
+    lines = [ln for ln in env_lines() if not re.match(PROXY_ENV_RE.format(idx), ln)]
+    if proxy:
+        scheme = proxy.get("type") or "http"
+        lines.append(f"ACCOUNT_{idx}_PROXY_URL={scheme}://{proxy['host']}")
+        lines.append(f"ACCOUNT_{idx}_PROXY_PORT={proxy['port']}")
+        # proxyHttp：让 HTTP 请求（axios/查询引擎）也走代理；socks5 只作用于浏览器
+        lines.append(f"ACCOUNT_{idx}_PROXY_HTTP={'true' if scheme in ('http', 'https') else 'false'}")
+        if proxy.get("username"):
+            lines.append(f"ACCOUNT_{idx}_PROXY_USERNAME={proxy['username']}")
+            lines.append(f"ACCOUNT_{idx}_PROXY_PASSWORD={proxy.get('password') or ''}")
+    _backup_env()
+    _write_env(lines)
+
+
+def add_proxy(payload):
+    name = str(payload.get("name", "")).strip()
+    ptype = str(payload.get("type", "http")).strip().lower()
+    host = str(payload.get("host", "")).strip()
+    user = str(payload.get("username", "")).strip()
+    pwd = str(payload.get("password", ""))
+    note = str(payload.get("note", "")).strip()
+    try:
+        port = int(str(payload.get("port", "")).strip())
+    except Exception:
+        return {"error": "端口必须是数字"}
+    if ptype not in ("http", "socks5"):
+        return {"error": "只支持 http 和 socks5 两类代理"}
+    if not host or re.search(r"\s", host):
+        return {"error": "代理地址不合法"}
+    if not (1 <= port <= 65535):
+        return {"error": "端口要在 1–65535"}
+    if ptype == "socks5" and user:
+        return {"error": "Patchright 不支持 SOCKS5 账号密码认证，请改用 IP 白名单授权的长效 SOCKS5"}
+    lst = proxies_all()
+    if any(p.get("host") == host and str(p.get("port")) == str(port) and p.get("type") == ptype for p in lst):
+        return {"error": "这个代理已经在列表里"}
+    p = {
+        "id": f"p{int(time.time() * 1000) % 10 ** 9}",
+        "name": name or f"{ptype}://{host}:{port}",
+        "type": ptype, "host": host, "port": port,
+        "username": user, "password": pwd, "note": note,
+        "createdAt": time.strftime("%Y-%m-%d %H:%M"),
+    }
+    lst.append(p)
+    proxies_write(lst)
+    return {"ok": True, "proxy": _proxy_public(p)}
+
+
+def del_proxy(pid):
+    lst = proxies_all()
+    keep = [p for p in lst if p.get("id") != pid]
+    if len(keep) == len(lst):
+        return {"error": "没有这个代理"}
+    proxies_write(keep)
+    # 顺带解绑所有指向它的账号
+    dead = next((p for p in lst if p.get("id") == pid), None)
+    if dead:
+        for a in env_accounts():
+            cur = account_proxy(a["index"])
+            if cur and cur["host"] == dead["host"] and str(cur["port"]) == str(dead["port"]):
+                set_account_proxy(a["index"], None)
+    return {"ok": True}
+
+
+def test_proxy(p, timeout=18):
+    scheme = "socks5h" if p.get("type") == "socks5" else p.get("type", "http")
+    auth = ""
+    if p.get("username"):
+        auth = f"{p['username']}:{p.get('password') or ''}@"
+    url = f"{scheme}://{auth}{p['host']}:{p['port']}"
+    cmd = ("curl -s -o /dev/null -m %d -w '%%{http_code} %%{time_total}' -x %s "
+           "--proxy-anyauth https://www.bing.com/") % (timeout, "'" + url + "'")
+    rc, out = sh(cmd, timeout=timeout + 8)
+    out = (out or "").strip()
+    code = out.split()[0] if out else "000"
+    return {"ok": code not in ("000", "") and code.startswith(("2", "3")),
+            "httpCode": code, "detail": out[:120], "proxy": url.replace(auth, "***@") if auth else url}
+
+
 def run_rebuild(timeout=300):
-    import subprocess
     try:
         p = subprocess.run(["bash", RECREATE], capture_output=True, text=True, timeout=timeout)
         return {"code": p.returncode,
@@ -962,6 +1097,20 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authed():
             return self.send_json(401, {"error": "unauthorized"})
 
+        if p == "/panel/proxies":
+            lst = proxies_all()
+            accs = env_accounts()
+            binds = {}
+            for a in accs:
+                if not a.get("proxy"):
+                    continue
+                hit = next((x for x in lst
+                            if x["host"] == a["proxy"]["host"] and str(x["port"]) == str(a["proxy"]["port"])
+                            and x["type"] == a["proxy"]["type"]), None)
+                binds[str(a["index"])] = hit["id"] if hit else "__unmanaged__"
+            return self.send_json(200, {"proxies": [_proxy_public(x) for x in lst],
+                                        "accounts": accs, "bindings": binds})
+
         if p == "/panel/rewards":
             qs = parse_qs(u.query)
             idx = int((qs.get("account") or ["1"])[0])
@@ -1113,6 +1262,67 @@ class Handler(BaseHTTPRequestHandler):
 
         if not self.authed():
             return self.send_json(401, {"error": "unauthorized"})
+
+        if p == "/panel/proxies":
+            try:
+                payload = json.loads(body or b"{}")
+            except Exception:
+                return self.send_json(400, {"error": "bad json"})
+            res = add_proxy(payload)
+            if res.get("error"):
+                return self.send_json(400, res)
+            if payload.get("test"):
+                res["test"] = test_proxy(next(x for x in proxies_all() if x["id"] == res["proxy"]["id"]))
+            return self.send_json(200, res)
+
+        if p == "/panel/proxies/delete":
+            try:
+                payload = json.loads(body or b"{}")
+            except Exception:
+                return self.send_json(400, {"error": "bad json"})
+            res = del_proxy(str(payload.get("id", "")))
+            if res.get("error"):
+                return self.send_json(400, res)
+            res["rebuild"] = run_rebuild()
+            return self.send_json(200, res)
+
+        if p == "/panel/proxies/test":
+            try:
+                payload = json.loads(body or b"{}")
+            except Exception:
+                return self.send_json(400, {"error": "bad json"})
+            pid = str(payload.get("id", ""))
+            if pid:
+                tgt = next((x for x in proxies_all() if x["id"] == pid), None)
+            else:
+                tgt = {"type": payload.get("type", "http"), "host": payload.get("host"),
+                       "port": payload.get("port"), "username": payload.get("username", ""),
+                       "password": payload.get("password", "")}
+            if not tgt or not tgt.get("host"):
+                return self.send_json(400, {"error": "缺少代理地址"})
+            return self.send_json(200, test_proxy(tgt))
+
+        if p == "/panel/accounts/proxy":
+            try:
+                payload = json.loads(body or b"{}")
+            except Exception:
+                return self.send_json(400, {"error": "bad json"})
+            idx = int(payload.get("account") or 0)
+            pid = str(payload.get("proxyId") or "")
+            if not idx:
+                return self.send_json(400, {"error": "缺少 account"})
+            if run_state() == "running":
+                return self.send_json(409, {"error": "任务正在运行，先停止再改代理"})
+            if pid and pid != "none":
+                tgt = next((x for x in proxies_all() if x["id"] == pid), None)
+                if not tgt:
+                    return self.send_json(404, {"error": "代理不存在"})
+                set_account_proxy(idx, tgt)
+                bound = _proxy_public(tgt)
+            else:
+                set_account_proxy(idx, None)
+                bound = None
+            return self.send_json(200, {"ok": True, "account": idx, "proxy": bound, "rebuild": run_rebuild()})
 
         if p == "/panel/rewards/claim":
             try:
