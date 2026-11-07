@@ -20,7 +20,7 @@ from urllib.parse import urlparse, parse_qs, unquote, quote
 BASE = os.path.dirname(os.path.abspath(__file__))
 CONF = os.path.join(BASE, "panel.conf")
 SCHED = os.path.join(BASE, "schedule.json")
-VERSION = "2.4.1"
+VERSION = "2.5.0"
 BUILD_DATE = "2026-11-07"
 STATE = os.path.join(BASE, "state.json")
 PORT = int(os.environ.get("PANEL_PORT", "5310"))
@@ -1136,12 +1136,178 @@ MIME = {
 }
 
 
+# ---------------------------------------------------------------- 发布中心
+GHCR_CN = "ghcr.io/wangixangya/microsoft-rewards-script:5-cn"
+JS_FILE = os.path.join(BASE, "ql", "ms-rewards-single-v5.js")
+JS_HASH = os.path.join(BASE, "ql", ".single-v5-hash")
+SYNC_LOG = "/root/.hermes/logs/ms-rewards-sync-v5.log"
+PUB_LOG = "/root/.hermes/logs/ms-sync-publish.log"
+V5_WORK = "/root/repos/ms-rewards-v5"
+SYNC_SCRIPT = "/root/.hermes/scripts/sync-ms-rewards-v5.sh"
+SYNC_JOB = "f1661c51bde3"
+
+
+def _sh(cmd, timeout=20):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.stdout.strip() if r.returncode == 0 else None
+    except Exception:
+        return None
+
+
+def _fmt_size(n):
+    try:
+        n = float(n)
+    except Exception:
+        return "—"
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f} {unit}" if unit in ("B", "KB") else f"{n:.1f} {unit}"
+        n /= 1024
+    return "—"
+
+
+def _image_local(tag):
+    out = _sh(["docker", "image", "inspect", tag, "--format",
+               "{{.Id}}|{{.Created}}|{{.Size}}|{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}"], 15)
+    if not out:
+        return None
+    parts = (out.split("|") + ["", "", "", ""])[:4]
+    return {
+        "tag": tag,
+        "id": parts[0].replace("sha256:", "")[:12],
+        "created": parts[1][:19].replace("T", " "),
+        "size": _fmt_size(parts[2]),
+        "digest": parts[3].split("@")[-1].replace("sha256:", "")[:12] if "@" in parts[3] else "本地构建",
+    }
+
+
+_REMOTE_CACHE = {"at": 0, "val": None}
+
+
+def _image_remote(tag, ttl=300):
+    """远端镜像 manifest 摘要（需要本机已 docker login ghcr.io，失败返回 None）
+    manifest inspect 要 10~20 秒，缓存 5 分钟，避免每次打开页面都卡住。"""
+    now = time.time()
+    if now - _REMOTE_CACHE["at"] < ttl:
+        return _REMOTE_CACHE["val"]
+    raw = _sh(["docker", "manifest", "inspect", tag], 25)
+    if not raw:
+        return None
+    try:
+        d = json.loads(raw)
+        ms = d.get("manifests") or []
+        archs = {m.get("platform", {}).get("architecture", "?") for m in ms}
+        plat = ",".join(sorted(a for a in archs if a in ("amd64", "arm64", "386", "arm")))
+        val = {"tag": tag, "digest": (ms[0]["digest"].replace("sha256:", "")[:12] if ms else ""), "platforms": plat}
+        _REMOTE_CACHE.update(at=time.time(), val=val)
+        return val
+    except Exception:
+        return None
+
+
+def _js_info():
+    if not os.path.exists(JS_FILE):
+        return None
+    st = os.stat(JS_FILE)
+    payload = ""
+    try:
+        payload = open(JS_HASH).read().strip()[:12]
+    except Exception:
+        pass
+    return {
+        "file": os.path.basename(JS_FILE),
+        "size": _fmt_size(st.st_size),
+        "mtime": time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime)),
+        "payload": payload,
+    }
+
+
+def _repo_info():
+    out = _sh(["git", "-C", V5_WORK, "log", "-1", "--format=%h|%ci|%s"], 15)
+    if not out:
+        return None
+    h, d, s = (out.split("|") + ["", "", ""])[:3]
+    behind = _sh(["git", "-C", V5_WORK, "rev-list", "--count", "HEAD..thesnetsky/v5"], 15)
+    return {"commit": h, "date": d[:19], "subject": s[:80], "behind": int(behind) if behind and behind.isdigit() else None}
+
+
+def _tail_lines(path, needles, limit=3, max_bytes=60000):
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - max_bytes))
+            text = f.read().decode("utf-8", "replace")
+    except Exception:
+        return []
+    hits = [ln for ln in text.splitlines() if any(n in ln for n in needles)]
+    return hits[-limit:]
+
+
+def _notify_target():
+    try:
+        jobs = json.load(open("/root/.hermes/cron/jobs.json"))
+        arr = jobs if isinstance(jobs, list) else jobs.get("jobs", [])
+        for j in arr:
+            if str(j.get("id") or j.get("job_id")) == SYNC_JOB:
+                return j.get("deliver") or "—"
+    except Exception:
+        pass
+    return "—"
+
+
+def _sync_running():
+    """精确判断同步脚本是否在跑：pgrep -f 会被「命令行里包含该字符串」的进程误命中"""
+    out = _sh(["ps", "-eo", "args"], 8) or ""
+    for ln in out.splitlines():
+        t = ln.strip()
+        if t in (f"bash {SYNC_SCRIPT}", f"/bin/bash {SYNC_SCRIPT}", f"/usr/bin/bash {SYNC_SCRIPT}"):
+            return True
+    return False
+
+
+def release_info():
+    syncing = _sync_running()
+    return {
+        "local": _image_local(PANEL_IMAGE),
+        "remote": _image_remote(GHCR_CN),
+        "js": _js_info(),
+        "repo": _repo_info(),
+        "sync": {
+            "running": syncing,
+            "recent": _tail_lines(SYNC_LOG, ["代码更新", "同步完成", "镜像更新"], 4),
+            "publish": _tail_lines(PUB_LOG, ["面板", "JS 单文件"], 3),
+            "notify": _notify_target(),
+            "log": SYNC_LOG,
+        },
+    }
+
+
+def start_sync():
+    if _sync_running():
+        return False
+    env = dict(os.environ)
+    for k in ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+        env.pop(k, None)
+    subprocess.Popen(["bash", SYNC_SCRIPT], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True, env=env)
+    return True
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = 30          # 单连接读写超时，防 slowloris 占线程
 
     def log_message(self, fmt, *a):
         pass
+
+    def handle_one_request(self):
+        # 手机/浏览器随手关页面会 reset 连接，别让 traceback 刷满 journal
+        try:
+            super().handle_one_request()
+        except (ConnectionResetError, BrokenPipeError):
+            self.close_connection = True
 
     # --- helpers ---
     def send_json(self, code, obj):
@@ -1241,6 +1407,12 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/panel/version":
             return self.send_json(200, {"version": VERSION, "build": BUILD_DATE,
                                         "schedule": load_json(SCHED, {})})
+
+        if p == "/panel/release":
+            try:
+                return self.send_json(200, release_info())
+            except Exception as e:
+                return self.send_json(500, {"error": f"读取发布信息失败: {e}"})
 
         if p == "/panel/config":
             try:
@@ -1431,6 +1603,13 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/panel/version":
             return self.send_json(200, {"version": VERSION, "build": BUILD_DATE,
                                         "schedule": load_json(SCHED, {})})
+
+        if p == "/panel/release/sync":
+            if run_state() == "running":
+                return self.send_json(409, {"ok": False, "error": "积分任务正在运行，先停下再同步，避免重建镜像时打断"})
+            started = start_sync()
+            return self.send_json(202 if started else 409,
+                                  {"ok": started, "message": "已开始检查上游并同步" if started else "同步任务已在运行"})
 
         if p == "/panel/proxies":
             try:

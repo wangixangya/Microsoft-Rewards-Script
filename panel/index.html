@@ -379,6 +379,10 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
             <div style="font-weight:600;margin-bottom:4px">镜像与版本</div>
             <div class="hint" style="font-weight:400">检查官方更新、重建镜像、面板自更新</div>
           </button>
+          <button class="btn" data-open="release" style="text-align:left;padding:14px 16px;height:auto">
+            <div style="font-weight:600;margin-bottom:4px">发布中心</div>
+            <div class="hint" style="font-weight:400">仓库同步状态、远端 -cn 镜像、JS 单文件、通知目标</div>
+          </button>
         </div>
       </div>
       <div class="card" style="margin-top:14px">
@@ -389,6 +393,34 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
           <tr><td class="k">调度</td><td id="setSched">—</td></tr>
           <tr><td class="k">并发</td><td id="setClusters">—</td></tr>
         </tbody></table>
+      </div>
+    </div>
+
+    <div class="sec" id="sec-release">
+      <div class="card">
+        <div class="card-h"><h3>仓库与版本</h3><span class="hint">上游 v5 → 我的仓库 → 镜像 / 面板 / JS</span></div>
+        <table><tbody>
+          <tr><td class="k">v5 提交</td><td id="relCommit" class="mono">—</td></tr>
+          <tr><td class="k">提交说明</td><td id="relSubject">—</td></tr>
+          <tr><td class="k">落后上游</td><td id="relBehind">—</td></tr>
+          <tr><td class="k">通知目标</td><td id="relNotify" class="mono">—</td></tr>
+        </tbody></table>
+        <div style="margin-top:14px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+          <button class="btn primary" id="relSync">立即检查上游</button>
+          <span class="hint" id="relSyncMsg"></span>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><h3>产物</h3><span class="hint">本地跑的是瘦身派生镜像；远端 -cn 是 Actions 产出</span></div>
+        <table><tbody>
+          <tr><td class="k">本地镜像</td><td id="relLocalImg">—</td></tr>
+          <tr><td class="k">远端 -cn</td><td id="relRemoteImg">—</td></tr>
+          <tr><td class="k">JS 单文件</td><td id="relJs">—</td></tr>
+        </tbody></table>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="card-h"><h3>最近同步记录</h3><span class="hint" id="relState">—</span></div>
+        <div class="mono" id="relLog" style="white-space:pre-wrap;font-size:12px;line-height:1.7">—</div>
       </div>
     </div>
 
@@ -625,8 +657,9 @@ $('#logoutBtn').onclick = async () => { await fetch('/logout', {method: 'POST'})
 
 const SEC_LABEL = {dash: '总览', acct: '账号与会话', logs: '运行日志', conf: '任务配置',
                    rewards: '奖励中心', settings: '设置', sched: '运行计划',
-                   notify: '推送渠道', proxy: '代理管理', update: '镜像与版本'};
-const SETTINGS_SUBS = ['sched', 'notify', 'proxy', 'update'];
+                   notify: '推送渠道', proxy: '代理管理', update: '镜像与版本',
+                   release: '发布中心'};
+const SETTINGS_SUBS = ['sched', 'notify', 'proxy', 'update', 'release'];
 
 function navButtonFor(sec) {
   return document.querySelector(`nav button[data-sec="${SETTINGS_SUBS.includes(sec) ? 'settings' : sec}"]`);
@@ -665,7 +698,40 @@ function showSection(sec) {
   if (sec === 'rewards') { initRewardAccounts(); loadRewardsConf(); loadRewards(); }
   if (sec === 'proxy') loadProxies();
   if (sec === 'settings') loadSettingsInfo();
+  if (sec === 'release') loadRelease();
 }
+
+async function loadRelease() {
+  try {
+    const r = await papi('/panel/release');
+    const repo = r.repo || {}, sync = r.sync || {};
+    $('#relCommit').textContent = repo.commit ? `${repo.commit} · ${repo.date || ''}` : '—';
+    $('#relSubject').textContent = repo.subject || '—';
+    $('#relBehind').textContent = repo.behind == null ? '—' : (repo.behind === 0 ? '已是最新' : `${repo.behind} 个提交待合并`);
+    $('#relNotify').textContent = sync.notify || '—';
+    const L = r.local || null, R = r.remote || null, J = r.js || null;
+    $('#relLocalImg').textContent = L ? `${L.tag} · ${L.size} · ${L.created}` : '未找到本地镜像';
+    $('#relRemoteImg').textContent = R ? `${R.tag} · ${R.platforms} · ${R.digest}` : '未获取（需 docker login ghcr.io，或 Actions 还没构建）';
+    $('#relJs').textContent = J ? `${J.file} · ${J.size} · ${J.mtime} · payload ${J.payload}` : '未构建';
+    $('#relState').textContent = sync.running ? '同步进行中…' : '空闲';
+    const lines = [...(sync.recent || []), ...(sync.publish || [])];
+    $('#relLog').textContent = lines.length ? lines.slice(-6).join('\n') : '暂无记录';
+  } catch (e) {
+    $('#relLog').textContent = '读取失败：' + (e.message || e);
+  }
+}
+
+$('#relSync').onclick = async () => {
+  const msg = $('#relSyncMsg');
+  msg.textContent = '正在启动…';
+  try {
+    const r = await papi('/panel/release/sync', {});
+    msg.textContent = r.message || '已开始';
+    setTimeout(loadRelease, 3000);
+  } catch (e) {
+    msg.textContent = e.message || '启动失败';
+  }
+};
 
 async function loadSettingsInfo() {
   try {
