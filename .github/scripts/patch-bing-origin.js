@@ -65,12 +65,22 @@ for (const rel of FILES) {
     })
 
     if (n > 0) {
-        // 补 import
+        // 补 import；若该文件已不再使用 URLs.*，把 URLs 从 import 里去掉（否则 TS6133 未使用报错）
         if (!/import\s*{[^}]*\bisBingHost\b[^}]*}\s*from\s*'[^']*constants\/urls'/.test(src)) {
             src = src.replace(
                 /import\s*\{([^}]*)\}\s*from\s*'((?:\.\.\/)+constants\/urls)'/,
                 (_m, names, from) => `import {${names.replace(/\s*$/, '')}, isBingHost } from '${from}'`
             )
+        }
+        if (!/\bURLs\s*\./.test(src)) {
+            src = src.replace(/import\s*\{([^}]*)\}\s*from\s*'((?:\.\.\/)+constants\/urls)'/, (_m, names, from) => {
+                const kept = names
+                    .split(',')
+                    .map(s => s.trim())
+                    .filter(s => s && s !== 'URLs')
+                if (!kept.includes('isBingHost')) kept.push('isBingHost')
+                return `import { ${kept.join(', ')} } from '${from}'`
+            })
         }
         fs.writeFileSync(file, src)
         total += n
