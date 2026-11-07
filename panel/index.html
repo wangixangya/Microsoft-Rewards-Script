@@ -417,12 +417,7 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
         <div class="row">
           <div><div>同时运行几个账号</div>
             <div class="hint">1 = 串行（默认）；2 = 两账号并行，总耗时约减半</div></div>
-          <select id="clusterSel" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px">
-            <option value="1">1（串行）</option>
-            <option value="2">2（并行）</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-          </select>
+          <input type="text" id="clusterInput" placeholder="手动填写 1–4" style="width:130px">
         </div>
         <div style="margin-top:14px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
           <button class="btn primary" id="saveClusters">保存并重建</button>
@@ -1162,16 +1157,22 @@ async function loadSched() {
   renderAcctSched();
   try {
     const c = await papi('/panel/clusters');
-    $('#clusterSel').value = String(c.clusters || 1);
-    $('#clusterMsg').textContent = `当前 ${c.clusters} 并发 · 共 ${c.accounts} 个账号`;
+    $('#clusterInput').placeholder = `当前 ${c.clusters}（共 ${c.accounts} 个账号）`;
+    $('#clusterMsg').textContent = '';
   } catch (e) {}
 }
 $('#saveClusters').onclick = async () => {
-  const n = Number($('#clusterSel').value);
+  const raw = $('#clusterInput').value.trim();
+  if (!/^\d+$/.test(raw)) { $('#clusterMsg').textContent = '请填写数字（1–4）'; return; }
+  const n = Number(raw);
+  if (n < 1 || n > 4) { $('#clusterMsg').textContent = '并发数只能是 1–4'; return; }
   if (!confirm(`把并发数改成 ${n}？会重建容器（约 15 秒，正在跑的任务会被中断）。`)) return;
   $('#clusterMsg').textContent = '正在写入并重建容器…';
   const r = await papi('/panel/clusters', {method: 'POST', body: JSON.stringify({clusters: n})});
-  $('#clusterMsg').textContent = r.error ? ('失败：' + r.error) : `已生效：${r.clusters} 并发`;
+  if (r.error) { $('#clusterMsg').textContent = '失败：' + r.error; return; }
+  $('#clusterInput').value = '';
+  $('#clusterMsg').textContent = `已生效：${r.clusters} 并发`;
+  loadSched();
 };
 async function renderAcctSched() {
   const tb = $('#acctSched');
