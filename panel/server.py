@@ -165,14 +165,18 @@ def start_update():
 
 def self_update_status():
     st = load_json(os.path.join(BASE, "selfupdate.json"), {})
-    pid = st.get("pid")
     running = False
-    if pid:
-        try:
-            os.kill(int(pid), 0)
-            running = True
-        except Exception:
-            running = False
+    if st.get("unit"):
+        rc, out = sh(f"systemctl is-active {st['unit']}", timeout=10)
+        running = out.strip() in ("active", "activating", "start")
+    else:
+        pid = st.get("pid")
+        if pid:
+            try:
+                os.kill(int(pid), 0)
+                running = True
+            except Exception:
+                running = False
     tail = ""
     try:
         with open("/tmp/ms-panel-selfupdate.log", "r", encoding="utf-8", errors="replace") as f:
@@ -193,11 +197,24 @@ def start_self_update():
             pass
     os.chmod(os.path.join(BASE, "self-update.sh"), 0o755)
     open("/tmp/ms-panel-selfupdate.log", "w").close()
-    proc = subprocess.Popen(["/bin/bash", os.path.join(BASE, "self-update.sh")],
-                            stdout=open("/tmp/ms-panel-selfupdate.log", "ab"),
-                            stderr=subprocess.STDOUT, start_new_session=True)
+    # 关键：脚本最后要 `systemctl restart ms-panel`，若作为面板子进程会被一起杀掉（日志只剩 "Terminated"）。
+    # 用 systemd-run 起独立 transient 单元，脱离面板 cgroup。
+    script = os.path.join(BASE, "self-update.sh")
+    cmd = [
+        "systemd-run", "--unit=ms-panel-selfupdate", "--collect", "--quiet",
+        "--property=StandardOutput=append:/tmp/ms-panel-selfupdate.log",
+        "--property=StandardError=append:/tmp/ms-panel-selfupdate.log",
+        "/bin/bash", script,
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        ok, err = r.returncode == 0, (r.stderr or "").strip()
+    except Exception as e:
+        ok, err = False, str(e)
+    if not ok:
+        return False, f"启动更新任务失败：{err[:200]}"
     save_json(os.path.join(BASE, "selfupdate.json"),
-              {"pid": proc.pid, "startedAt": time.strftime("%Y-%m-%d %H:%M:%S")})
+              {"pid": None, "startedAt": time.strftime("%Y-%m-%d %H:%M:%S"), "unit": "ms-panel-selfupdate"})
     return True, "已开始更新面板程序（约 10 秒，期间页面会短暂断开）"
 
 
