@@ -8,6 +8,8 @@ import hashlib
 import hmac
 import json
 import os
+import socket
+import platform
 import re
 import shutil
 import subprocess
@@ -1429,12 +1431,32 @@ def _cpu_pct():
 
 
 def _temp_c():
-    for p in ("/sys/class/thermal/thermal_zone0/temp", "/sys/class/hwmon/hwmon0/temp1_input",
-              "/sys/class/hwmon/hwmon1/temp1_input", "/sys/class/hwmon/hwmon2/temp1_input"):
-        t = _rd(p)
-        if t.isdigit() and int(t) > 1000:
-            return round(int(t) / 1000.0, 1)
+    """温度：不同机器传感器路径不一样（x86 走 hwmon、ARM 走 thermal_zone），全部扫一遍。"""
+    import glob
+    cands = sorted(glob.glob("/sys/class/thermal/thermal_zone*/temp")) + \
+            sorted(glob.glob("/sys/class/hwmon/hwmon*/temp*_input"))
+    for p in cands:
+        t = _rd(p).strip()
+        if t.isdigit():
+            c = int(t) / 1000.0
+            if 1 < c < 130:      # 过滤掉 0 和明显异常的读数
+                return round(c, 1)
     return None
+
+
+def _host_info():
+    """这台机器的身份：换机器打开面板时，一眼看出数据来自哪台设备。"""
+    osrel = {}
+    for ln in _rd("/etc/os-release").splitlines():
+        if "=" in ln:
+            k, v = ln.split("=", 1)
+            osrel[k] = v.strip().strip('"')
+    return {
+        "name": socket.gethostname(),
+        "kernel": platform.release(),
+        "os": osrel.get("PRETTY_NAME") or osrel.get("NAME") or "",
+        "arch": platform.machine(),
+    }
 
 
 def _fmt_mb(kb):
@@ -1460,10 +1482,20 @@ def sys_info():
               "percent": round(100.0 * u.used / u.total, 1)}
     except Exception:
         pass
-    raw = _sh(["docker", "inspect", "ms-rewards-api", "--format",
-               "{{.State.Status}}|{{.State.StartedAt}}|{{.Config.Image}}|{{.HostConfig.Memory}}"], 10) or ""
+    cname = "ms-rewards-api"
+    fmt = "{{.State.Status}}|{{.State.StartedAt}}|{{.Config.Image}}|{{.HostConfig.Memory}}"
+    raw = _sh(["docker", "inspect", cname, "--format", fmt], 10) or ""
+    if not raw:
+        # 换机器时容器名可能不是 ms-rewards-api，按镜像名兜底找
+        listing = _sh(["docker", "ps", "-a", "--format", "{{.Names}}|{{.Image}}"], 10) or ""
+        for line in listing.splitlines():
+            n, _, img = line.partition("|")
+            if "microsoft-rewards" in img or img.startswith("ms-rewards"):
+                cname = n
+                raw = _sh(["docker", "inspect", cname, "--format", fmt], 10) or ""
+                break
     parts = (raw.split("|") + ["", "", "", ""])[:4]
-    cont = {"name": "ms-rewards-api", "status": parts[0] or "unknown", "since": parts[1][:19].replace("T", " "),
+    cont = {"name": cname, "status": parts[0] or "未运行", "since": parts[1][:19].replace("T", " "),
             "image": parts[2], "memLimit": parts[3] not in ("", "0")}
     up = float((_rd("/proc/uptime").split() or ["0"])[0] or 0)
     return {
@@ -1476,6 +1508,7 @@ def sys_info():
         "temp": _temp_c(),
         "uptime": f"{int(up // 86400)}天{int(up % 86400 // 3600)}h",
         "container": cont,
+        "host": _host_info(),
         "at": time.strftime("%H:%M:%S"),
     }
 

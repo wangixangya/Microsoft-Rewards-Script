@@ -270,7 +270,7 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
       </div>
 
       <div class="card" style="margin-bottom:14px">
-        <div class="card-h"><h3>系统状态</h3><span class="hint" id="sysAt">—</span></div>
+        <div class="card-h"><h3>系统状态</h3><span class="hint"><span id="sysHost">—</span> · 更新于 <span id="sysAt">—</span></span></div>
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px">
           <div><div class="k">CPU</div><div class="v" id="sysCpu">—</div></div>
           <div><div class="k">内存</div><div class="v" id="sysMem">—</div></div>
@@ -837,7 +837,9 @@ async function loadSystem() {
     $('#sysTemp').textContent = (d.temp == null ? '—' : d.temp + '°C');
     $('#sysCont').textContent = (ct.status || '—') + (ct.image ? ' · ' + String(ct.image).replace('ms-rewards:', '') : '');
     $('#sysUp').textContent = d.uptime || '—';
-    $('#sysAt').textContent = '更新于 ' + (d.at || '');
+    const h = d.host || {};
+    $('#sysHost').textContent = h.name ? `${h.name} · ${h.os || h.kernel || ''}` : '本机';
+    $('#sysAt').textContent = d.at || '';
   } catch (e) { $('#sysAt').textContent = '读取失败'; }
 }
 setInterval(() => { if ($('#sec-dash').classList.contains('on')) loadSystem(); }, 20000);
@@ -1632,7 +1634,7 @@ const TIPS = [
   ['#k7', '近 7 日收益：最近一周合计，能看出掉分趋势'],
   ['#kBal', '账户余额：微软账号里当前的总积分'],
   ['#kRun', '运行概况：最近一次运行的状态与耗时'],
-  ['#sysCpu, #sysMem, #sysDisk, #sysTemp', '本机实时状态：CPU 占用、内存、磁盘、温度（含容器运行情况）'],
+  ['#sysCpu, #sysMem, #sysDisk, #sysTemp, #sysHost', '本机实时状态：CPU、内存、磁盘、温度与容器情况——全部读当前这台机器，换设备打开会自动变'],
   ['#cmpTable', '账号对比：每个账号近 7 日合计、今日、余额与走势条形图'],
   ['#recentTable', '最近运行：最近 3 天每天的合计与各账号得分'],
 
