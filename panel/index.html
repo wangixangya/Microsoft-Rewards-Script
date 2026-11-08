@@ -496,18 +496,29 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
       </div>
 
       <div class="card" style="margin-top:14px">
-        <div class="card-h"><h3>并发执行</h3><span class="hint">v5 原生 cluster：同时跑多个账号</span></div>
+        <div class="card-h"><h3>运行方式</h3><span class="hint">账号是排队跑还是同时跑</span></div>
         <div class="row">
-          <div><div>同时运行几个账号</div>
-            <div class="hint">1 = 串行（默认）；2 = 两账号并行，总耗时约减半</div></div>
-          <input type="text" id="clusterInput" placeholder="手动填写 1–4" style="width:130px">
+          <div>
+            <div><b>1 = 串行</b>　<b>2 = 并发</b></div>
+            <div class="hint" style="margin-top:6px">
+              1｜一个账号跑完再跑下一个，2 个账号耗时翻倍，最省内存
+            </div>
+            <div class="hint">
+              2｜所有账号同时跑；只有 2 个账号时就是两个一起跑、耗时约减半，账号更多时分成 2 组并行
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn sm" data-cl="1">串行 1</button>
+            <button class="btn sm" data-cl="2">并发 2</button>
+            <input type="text" id="clusterInput" placeholder="1–4" style="width:66px">
+          </div>
         </div>
         <div style="margin-top:14px;display:flex;gap:9px;align-items:center;flex-wrap:wrap">
           <button class="btn primary" id="saveClusters">保存并重建</button>
           <span class="hint" id="clusterMsg"></span>
         </div>
         <div class="hint" style="margin-top:10px">
-          每个 worker 独立启动浏览器（移动+桌面各一个），2 并发约需 1.5–2 GB 内存。v5 会在第二个分片前插入 1–3 分钟随机间隔（accountDelay），不会真的同时起两个登录。
+          并发时每个分片独立开浏览器（移动+桌面），预留 1.5–2 GB 内存；分片之间会随机错峰 1–3 分钟（accountDelay），不是同一秒起跑。
         </div>
       </div>
 
@@ -1569,19 +1580,23 @@ async function loadSched() {
     $('#clusterMsg').textContent = '';
   } catch (e) {}
 }
-$('#saveClusters').onclick = async () => {
-  const raw = $('#clusterInput').value.trim();
-  if (!/^\d+$/.test(raw)) { $('#clusterMsg').textContent = '请填写数字（1–4）'; return; }
-  const n = Number(raw);
-  if (n < 1 || n > 4) { $('#clusterMsg').textContent = '并发数只能是 1–4'; return; }
-  if (!confirm(`把并发数改成 ${n}？会重建容器（约 15 秒，正在跑的任务会被中断）。`)) return;
+async function saveClusters(n) {
+  if (!confirm(`切换到「${n === 1 ? '串行' : '并发'}（${n}）」？会重建容器（约 15 秒，正在跑的任务会被中断）。`)) return;
   $('#clusterMsg').textContent = '正在写入并重建容器…';
   const r = await papi('/panel/clusters', {method: 'POST', body: JSON.stringify({clusters: n})});
   if (r.error) { $('#clusterMsg').textContent = '失败：' + r.error; return; }
   $('#clusterInput').value = '';
-  $('#clusterMsg').textContent = `已生效：${r.clusters} 并发`;
+  $('#clusterMsg').textContent = r.clusters === 1 ? '已生效：串行（1）' : `已生效：并发（${r.clusters} 组）`;
   loadSched();
+}
+$('#saveClusters').onclick = () => {
+  const raw = $('#clusterInput').value.trim();
+  if (!/^\d+$/.test(raw)) { $('#clusterMsg').textContent = '请填 1–4，或直接点上面的「串行 1 / 并发 2」'; return; }
+  const n = Number(raw);
+  if (n < 1 || n > 4) { $('#clusterMsg').textContent = '只能是 1–4'; return; }
+  saveClusters(n);
 };
+document.querySelectorAll('[data-cl]').forEach(b => b.onclick = () => saveClusters(Number(b.dataset.cl)));
 async function renderAcctSched() {
   const tb = $('#acctSched');
   let accs = [];
