@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/wangixangya/Microsoft-Rewards-Script/actions/workflows/validate.yml"><img src="https://github.com/wangixangya/Microsoft-Rewards-Script/actions/workflows/validate.yml/badge.svg?branch=v5" alt="Validate"></a>
-  <img src="https://img.shields.io/badge/version-5.0.0-111111" alt="Version">
+  <img src="https://img.shields.io/badge/version-5.0.0" alt="Version">
   <a href="https://github.com/wangixangya/Microsoft-Rewards-Script/pkgs/container/microsoft-rewards-script"><img src="https://img.shields.io/badge/ghcr.io-5%20%7C%205--cn-2496ED?logo=docker&logoColor=white" alt="GHCR"></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A524-3C873A?logo=node.js&logoColor=white" alt="Node">
   <img src="https://img.shields.io/badge/panel-%E4%B8%AD%E6%96%87-111111" alt="Panel">
