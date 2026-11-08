@@ -182,6 +182,13 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
   .kpi .val{font-size:25px}
   #chartGrid{grid-template-columns:1fr!important}
 }
+
+/* ===== 全局悬浮说明（鼠标停留 / 点击都触发）===== */
+#tipbox{position:fixed;z-index:99999;max-width:300px;background:#111114;color:#fff;border:1px solid rgba(255,255,255,.14);
+  border-radius:10px;padding:9px 11px;font-size:12.5px;line-height:1.55;box-shadow:0 8px 28px rgba(0,0,0,.28);
+  pointer-events:none;opacity:0;transform:translateY(2px);transition:opacity .12s ease,transform .12s ease}
+#tipbox.on{opacity:1;transform:translateY(0)}
+[data-tip]{cursor:help}
 </style>
 </head>
 <body>
@@ -520,11 +527,8 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
         <div class="hint" style="margin-top:10px">
           并发时每个分片独立开浏览器（移动+桌面），实测单分片峰值约 1.2 GB，N 个分片内存约 <b>N × 1.2 GB</b>；分片之间会随机错峰 1–3 分钟（accountDelay），不是同一秒起跑。
         </div>
-        <div class="hint" style="margin-top:8px;border-top:1px solid var(--line,#e5e5e5);padding-top:8px">
-          <b>本机建议</b>（15 GB 内存、当前可用约 8 GB）：<br>
-          · 2 个账号 → 填 <b>2</b>，峰值约 2.4 GB，耗时减半，推荐<br>
-          · 3–4 个账号 → 填 <b>2</b> 仍然最划算（2 路并发）；想更快可填 3（约 3.6 GB）<br>
-          · 填 <b>4</b> 约 4.8 GB，能跑但会挤压青龙/影视等其他容器，不建议
+        <div class="hint" id="memAdvice" style="margin-top:8px;border-top:1px solid var(--line,#e5e5e5);padding-top:8px">
+          <b>本机建议</b>：正在读取本机内存…
         </div>
       </div>
 
@@ -1584,6 +1588,7 @@ async function loadSched() {
     const c = await papi('/panel/clusters');
     $('#clusterInput').placeholder = `当前 ${c.clusters}（共 ${c.accounts} 个账号）`;
     $('#clusterMsg').textContent = '';
+    renderMemAdvice(c.clusters, c.accounts);
   } catch (e) {}
 }
 async function saveClusters(n) {
@@ -1603,6 +1608,196 @@ $('#saveClusters').onclick = () => {
   saveClusters(n);
 };
 document.querySelectorAll('[data-cl]').forEach(b => b.onclick = () => saveClusters(Number(b.dataset.cl)));
+
+
+/* ===== 说明气泡引擎：任何元素命中 TIPS 或带 data-tip 都能显示 ===== */
+const TIPS = [
+  /* —— 侧栏 —— */
+  ['[data-sec="dash"]', '总览：今日 / 近 7 日收益、余额曲线、账号对比与系统状态（CPU、内存、磁盘、温度）'],
+  ['[data-sec="acct"]', '账号与会话：增删账号、写备注、绑定代理、改密码/2FA、单账号立即运行与独立定时'],
+  ['[data-sec="logs"]', '运行日志：实时日志（可切中文/原文）+ 最近 3 天运行记录，可按账号筛选'],
+  ['[data-sec="conf"]', '任务配置：直接编辑 config.json，开关每日任务/活动/打卡，改延迟与并发'],
+  ['[data-sec="rewards"]', '奖励中心：查余额与可领取积分，手动或自动领取'],
+  ['[data-sec="settings"]', '设置：运行计划、推送、代理、镜像更新、备份恢复、发布中心的入口'],
+  ['#footSched', '当前定时表达式；off 表示自动运行已关闭'],
+  ['#logoutBtn', '退出登录：清掉面板 Cookie，下次需要重新输密码'],
+
+  /* —— 顶栏 & 总览 —— */
+  ['#startBtn', '立即运行一次：触发全部账号跑一遍（正在跑时不可点，失败会记入运行日志）'],
+  ['#stopBtn', '停止：给正在跑的任务发停止信号，已完成的账号积分不受影响'],
+  ['#statePill', '当前运行状态：空闲 / 运行中 / 异常，鼠标移上去可看到进度'],
+  ['#acctSeg button', '按账号查看：只看这个账号的曲线与收益；有备注时显示备注'],
+  ['#rangeChips button', '时间范围：切换近 3 / 7 / 14 / 30 天的统计窗口'],
+  ['#kToday', '今日收益：今天所有账号新赚的积分合计'],
+  ['#k7', '近 7 日收益：最近一周合计，能看出掉分趋势'],
+  ['#kBal', '账户余额：微软账号里当前的总积分'],
+  ['#kRun', '运行概况：最近一次运行的状态与耗时'],
+  ['#sysCpu, #sysMem, #sysDisk, #sysTemp', '本机实时状态：CPU 占用、内存、磁盘、温度（含容器运行情况）'],
+  ['#cmpTable', '账号对比：每个账号近 7 日合计、今日、余额与走势条形图'],
+  ['#recentTable', '最近运行：最近 3 天每天的合计与各账号得分'],
+
+  /* —— 账号与会话 —— */
+  ['#addAcctBtn', '添加账号：填邮箱、地区、密码（有 2FA 就填密钥），保存后会重建容器'],
+  ['#newEmail', '账号邮箱：微软账号登录名，必须能正常登录 rewards'],
+  ['#newGeo', '地区（geoLocale）：一般填 cn / us，影响搜索语言与任务内容'],
+  ['#newPass', '密码：用于首次登录拿会话；浏览器模式登录后会话会存起来'],
+  ['#newTotp', '2FA 密钥：账号开了双重验证才需要填（Base32 那串）'],
+  ['#regenBtn', '重建容器：把改过的账号/环境变量写进容器并重启（约 15 秒）'],
+  ['[data-acctnote]', '账号备注：随便起名（如「主力号」），有备注的地方只显示备注，不显示邮箱'],
+  ['[data-acctrun]', '单账号立即运行：只跑这个账号，不影响其他账号'],
+  ['[data-acctsec]', '改密码 / 2FA：更新该账号的登录凭据，下次运行用新凭据'],
+  ['[data-acctsw]', '独立计划开关：给这个账号单独配 cron，和其他账号分开跑'],
+  ['[data-acctcron]', '独立 cron：留空表示不单独跑，只跟总计划一起执行'],
+  ['#saveAcctSched', '保存独立计划：写入每个账号自己的 cron'],
+  ['#sessTable', '会话状态：每个账号的登录会话是否有效，失效会导致 0 分'],
+
+  /* —— 日志 —— */
+  ['#zhLog', '日志汉化：把脚本英文日志翻成中文；取消勾选看原始英文（悬停可看原文）'],
+  ['#autoScroll', '自动滚动：新日志出现时自动滚到底部'],
+  ['#autoRefresh', '自动刷新：日志页每 5 秒拉一次新内容'],
+  ['#refreshLogs', '刷新：立刻重新拉取一次日志'],
+  ['#runAcct', '运行记录筛选：只看某个账号最近 3 天的成绩'],
+  ['#runTb', '运行记录：日期、合计、各账号得分，来自容器内的 run-history.json'],
+
+  /* —— 任务配置 —— */
+  ['#taskToggles input', '任务开关：每日任务 / 更多活动 / 打卡卡片等，关掉就不跑那一类'],
+  ['#searchToggles input', '搜索设置：是否用地理区域、是否随机滚动结果'],
+  ['#evToggles input', '高级开关：视觉搜索、后台浏览等附加行为'],
+  ['#jsonBox', 'config.json 原文：可直接改，保存前会做 JSON 校验'],
+  ['#saveJson', '保存 JSON：整段配置校验后写入，格式错误会直接拒绝'],
+  ['#reloadConf', '重新载入：放弃未保存的改动，从磁盘重读配置'],
+
+  /* —— 设置 · 运行计划 —— */
+  ['#schedSw', '定时开关：关掉后只能手动运行，计划任务不再自动触发'],
+  ['#cronInput', 'cron 表达式：5 段格式（分 时 日 月 周），例如 0 7 * * * 表示每天 7 点'],
+  ['#saveSched', '保存计划：写入 cron 表达式并立即生效（不动容器，不中断运行）'],
+  ['#runNow', '立刻试跑：不看计划，马上跑一次，用于验证改完配置是否正常'],
+  ['[data-cl="1"]', '串行：一个账号跑完再跑下一个，最省内存，耗时翻倍'],
+  ['[data-cl="2"]', '并发：所有账号同时跑（账号多于 2 时分成 2 组并行），耗时约减半'],
+  ['#clusterInput', '手动指定分片数 1–4；越大越快，内存按 N × 1.2 GB 增长'],
+  ['#saveClusters', '保存并重建：改完会重建容器（约 15 秒），正在跑的任务会被中断'],
+  ['#memAdvice', '按这台机器的真实内存算出最多能开几路、建议填几，换机器会自动重算'],
+
+  /* —— 设置 · 推送 —— */
+  ['#chList', '推送渠道列表：每个渠道可单独开关、单独配置'],
+  ['#addChBtn', '新增渠道：支持 Discord / Telegram / ntfy / Webhook'],
+  ['#chType', '渠道类型：不同渠道字段不一样，选完会自动换表单'],
+  ['#chFields input', '渠道参数：Token、Chat ID、Webhook 地址等；Telegram 可填代理'],
+  ['#chSave', '保存渠道：写入 notify.json，立即生效'],
+
+  /* —— 设置 · 代理 —— */
+  ['#pxAdd', '新增代理：给某个账号单独绑出口 IP（降低风控概率）'],
+  ['#pxTable', '代理列表：显示的代理会写进容器环境变量，按账号 index 绑定'],
+  ['#pxTestNew', '测试连通性：从本机连一次代理，能通才保存'],
+  ['#pxNote', '代理备注：例如「辽宁移动」「香港机场」'],
+
+  /* —— 设置 · 镜像与版本 —— */
+  ['#updCheckBtn', '检查更新：对比本地与远端镜像 digest，有新版本才提示'],
+  ['#updRemoteBtn', '拉取远端镜像：从 ghcr 拉最新镜像并重建容器（走代理，比较慢）'],
+  ['#updRunBtn', '用本地镜像重建：不联网，用已有的镜像重建容器'],
+  ['#selfUpdBtn', '从仓库更新面板：拉取仓库里的 panel/ 覆盖本地并重启'],
+  ['#selfRestartBtn', '重启面板：只重启 5310 的 Web 服务，不动正在跑的容器'],
+  ['#setImage', '当前容器使用的镜像与版本号'],
+
+  /* —— 设置 · 备份 —— */
+  ['#bkCreate', '新建备份：打包 config / sessions / 面板配置，出问题可回滚'],
+  ['#bkTb', '备份列表：显示时间、大小与内容，可一键恢复或删除'],
+  ['[data-bk-restore]', '恢复：用这份备份覆盖当前配置（会重建容器）'],
+
+  /* —— 发布中心 —— */
+  ['#relSync', '手动同步：立刻拉上游 v5、合并、推送、触发 CI'],
+  ['#relBuildJs', '重建单文件：把当前版本重新打成可直接跑的 JS 包并发布 Release'],
+  ['#relState', '发布状态：本地提交、远端提交、是否落后上游'],
+  ['#relJs', '单文件包：体积与哈希，变了才需要重新发布'],
+  ['#relLocalImg', '本地镜像：容器实际在跑的镜像与大小'],
+  ['#relRemoteImg', '远端镜像：ghcr 上的最新 digest，用来判断要不要更新'],
+  ['#relNotify', '推送记录：最近一次同步通知是否发到 TG 群'],
+
+  /* —— 奖励中心 —— */
+  ['#rwClaim', '领取今日奖励：把当前可领取的积分立刻领掉'],
+  ['#rwAuto', '自动领取开关：每天按设定时间自动领，错过会在下次启动时补领'],
+  ['#rwCron', '自动领取时间：默认每天 09:10'],
+  ['#rwSave', '保存领取设置：写入 rewards.json，后台线程按它执行'],
+  ['#rwRefresh', '刷新：重新拉一次余额与可领取积分'],
+  ['#rwClaimable', '可领取：当前还没领到手的积分，点击「领取」即到账'],
+];
+
+
+const tipbox = document.createElement('div');
+tipbox.id = 'tipbox';
+document.body.appendChild(tipbox);
+let tipTimer = null;
+
+function tipTextFor(el) {
+  if (!el || el === document.body) return '';
+  let node = el;
+  for (let i = 0; i < 4 && node && node !== document.body; i++, node = node.parentElement) {
+    if (node.dataset && node.dataset.tip) return node.dataset.tip;
+    const hit = TIPS.find(([sel]) => { try { return node.matches(sel); } catch (e) { return false; } });
+    if (hit) return hit[1];
+  }
+  return '';
+}
+
+function showTip(text, x, y) {
+  tipbox.textContent = text;
+  tipbox.classList.add('on');
+  const pad = 14;
+  const r = tipbox.getBoundingClientRect();
+  let left = x + 14, top = y + 16;
+  if (left + r.width > innerWidth - pad) left = Math.max(pad, innerWidth - r.width - pad);
+  if (top + r.height > innerHeight - pad) top = Math.max(pad, y - r.height - 12);
+  tipbox.style.left = left + 'px';
+  tipbox.style.top = top + 'px';
+}
+function hideTip() { tipbox.classList.remove('on'); }
+
+document.addEventListener('mouseover', e => {
+  const t = tipTextFor(e.target);
+  if (t) showTip(t, e.clientX, e.clientY); else hideTip();
+});
+document.addEventListener('mouseout', e => { if (tipTextFor(e.target)) hideTip(); });
+document.addEventListener('mousemove', e => {
+  if (tipbox.classList.contains('on')) showTip(tipbox.textContent, e.clientX, e.clientY);
+});
+/* 手机/触屏：点一下显示，再点别处消失 */
+document.addEventListener('click', e => {
+  const t = tipTextFor(e.target);
+  if (!t) { hideTip(); return; }
+  if (tipbox.classList.contains('on') && tipbox.textContent === t && !e.target.dataset._tipOn) {
+    hideTip(); e.target.dataset._tipOn = ''; return;
+  }
+  clearTimeout(tipTimer);
+  e.target.dataset._tipOn = '1';
+  showTip(t, e.clientX, e.clientY);
+  tipTimer = setTimeout(() => { hideTip(); delete e.target.dataset._tipOn; }, 4000);
+}, true);
+document.addEventListener('scroll', hideTip, true);
+
+async function renderMemAdvice(clusters, accounts) {
+  const box = $('#memAdvice');
+  if (!box) return;
+  let sys;
+  try { sys = await (await fetch('/panel/system')).json(); } catch (e) {
+    box.innerHTML = '<b>本机建议</b>：读不到内存数据';
+    return;
+  }
+  const g = mb => (mb / 1024).toFixed(1);
+  const PER = 1228;   // 每个分片峰值（MB，实测约 1.2 GB）
+  const RESERVE = 1536; // 留给青龙/影视等其他容器（MB）
+  const maxSafe = Math.max(1, Math.min(8, Math.floor((sys.mem.avail - RESERVE) / PER)));
+  const rec = Math.min(maxSafe, Math.max(1, accounts || 1));
+  const cores = sys.cpu?.cores || '?';
+  box.innerHTML =
+    `<b>本机建议</b>（这台机器：${g(sys.mem.total)} GB 内存 · 当前可用 ${g(sys.mem.avail)} GB · ${cores} 核 · ${accounts || '?'} 个账号）：<br>` +
+    `· 每路分片峰值约 ${(PER / 1024).toFixed(1)} GB，另留 ${(RESERVE / 1024).toFixed(1)} GB 给其他容器 → 本机当前最多 <b>${maxSafe} 路</b><br>` +
+    `· 建议填 <b>${rec}</b>` + (rec === (accounts || 1) ? '（所有账号同时跑）' : '') +
+    `，预计占用约 <b>${g(rec * PER)} GB</b>，跑完还剩 ${g(sys.mem.avail - rec * PER)} GB 可用<br>` +
+    (maxSafe < (accounts || 1)
+      ? `· 账号比可用内存多：填 ${maxSafe} 就是这台机器能承受的上限，再高会挤压其他容器`
+      : `· 填得比 ${maxSafe} 更高，会挤压青龙/影视等其他容器`);
+}
+
 async function renderAcctSched() {
   const tb = $('#acctSched');
   let accs = [];
