@@ -23,13 +23,23 @@
 本仓库是 [TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script) 上游 `v5`
 的持续跟进分支：与上游保持每日同步，并额外提供中文控制台、国内网络补丁镜像与自动化发布流水线。
 
+> **来源与致谢（二改声明）**
+>
+> 本仓库是**二改版本**，代码来源链条如下：
+>
+> 1. **原作者**：[TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script) —— 原始项目，`v5` 全部核心逻辑与架构归原作者；
+> 2. **中文/国内适配**：[hex-ci/Microsoft-Rewards-Script](https://github.com/hex-ci/Microsoft-Rewards-Script) —— 本仓库在此基础上做的中文适配与国内网络处理；
+> 3. **本仓库（二次改动）**：在 hex-ci 的基础上继续二改，新增中文 Web 控制台、`:5-cn` 国内补丁镜像、单文件 JS 打包与自动化发布流水线。
+>
+> 原项目版权归原作者所有，遵循 **GPL-3.0**；本二改部分同样以 GPL-3.0 发布，保留原作者与 hex-ci 的署名。**请优先支持原作者与 hex-ci 的上游项目。**
+
 |              |                                                                               |
 | :----------- | :---------------------------------------------------------------------------- |
 | **运行环境** | Node.js ≥ 24 · patchright · Docker（amd64 / arm64）                           |
 | **运行模式** | `api`（HTTP，快）· `browser`（渲染卡片，GhostCursor）· `maximize`（尽量多刷） |
 | **并发**     | `clusters` 1–4 分片并行 · `accountDelay` 随机 1–3 分钟                        |
 | **入口**     | 命令行 · Docker · 控制接口 · 中文 Web 面板                                    |
-| **上游**     | 每日 05:00 自动合并 TheNetsky v5                                              |
+| **上游**     | 每日 05:00 自动合并 TheNetsky v5（经 hex-ci 中文适配）                        |
 
 ---
 
@@ -187,13 +197,21 @@ is a maintained fork of [TheNetsky/Microsoft-Rewards-Script](https://github.com/
 synced with upstream daily and extended with a Chinese control panel, a CN-patched image and a
 self-hosted release pipeline.
 
+> **Credits / what this fork is.** This is a **second-order fork**:
+>
+> 1. **Original author** — [TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script): all core `v5` logic and architecture.
+> 2. **Chinese / CN-network adaptation** — [hex-ci/Microsoft-Rewards-Script](https://github.com/hex-ci/Microsoft-Rewards-Script): the base this repo is modified from.
+> 3. **This repo (second modification)** — Chinese web panel, `:5-cn` CN-patched image, single-file JS bundle and an automated release pipeline on top of the two above.
+>
+> All original copyright stays with the original authors. Released under **GPL-3.0**, with attribution to TheNetsky and hex-ci preserved. Please star and support the upstream projects first.
+
 |              |                                                                           |
 | :----------- | :------------------------------------------------------------------------ |
 | **Runtime**  | Node.js ≥ 24 · patchright · Docker (amd64 / arm64)                        |
 | **Modes**    | `api` (HTTP, fast) · `browser` (rendered cards, GhostCursor) · `maximize` |
 | **Scale**    | `clusters` 1-4 parallel shards · randomised `accountDelay` 1-3 min        |
 | **Surface**  | CLI · Docker · Control API · Chinese web panel                            |
-| **Upstream** | TheNetsky `v5`, merged daily at 05:00                                     |
+| **Upstream** | TheNetsky `v5` (via hex-ci CN adaptation), merged daily at 05:00          |
 
 ### Features
 
