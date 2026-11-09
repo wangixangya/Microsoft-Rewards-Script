@@ -11,6 +11,7 @@ import os
 import socket
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import threading
@@ -725,7 +726,14 @@ ENVFILE = os.path.join(BASE, "env.list")
 RECREATE = CONF_D.get("RECREATE_SCRIPT") or os.path.join(os.path.dirname(BASE), "recreate_ms.sh")
 # 面板重建容器时必须显式传镜像：recreate_ms.sh 的默认值是 v4.3.3，
 # 不传就会把 v5 容器悄悄降级回 v4（2026-11-07 踩过）。
-PANEL_IMAGE = CONF_D.get("IMAGE") or "ms-rewards:v5-cn"
+def _current_image():
+    """容器模式下：读出自己在跑的镜像，作为重建默认镜像（避免重建出没有面板的运行时镜像）。"""
+    rc, out = sh("docker inspect --format '{{.Config.Image}}' $(hostname) 2>/dev/null", 15)
+    val = (out or "").strip().splitlines()[-1] if out.strip() else ""
+    return val or "ms-rewards:v5-cn"
+
+
+PANEL_IMAGE = CONF_D.get("IMAGE") or (_current_image() if IN_CONTAINER else "ms-rewards:v5-cn")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -1022,7 +1030,84 @@ def set_clusters(n):
     return n
 
 
+SKIP_ENV = {"PATH", "HOSTNAME", "HOME", "LANG", "PWD", "SHLVL", "TERM", "LC_ALL",
+            "GPG_KEY", "PYTHON_VERSION", "NODE_VERSION", "YARN_VERSION"}
+
+
+def recreate_in_container(image, timeout=300):
+    """一体化镜像内的「重建容器」：用 docker CLI 读自身规格，交给一个脱离本容器的
+    短命容器去 rm + run，避免把自己杀掉时动作只做了一半。"""
+    rc, out = sh("docker inspect --format '{{.Name}}' $(hostname) 2>/dev/null", 20)
+    name = (out or "").strip().splitlines()[-1].lstrip("/") if out.strip() else ""
+    if rc != 0 or not name:
+        return {"code": -1, "err": "docker CLI 或 docker.sock 不可用，无法在容器内重建"}
+    rc, raw = sh(f"docker inspect {shlex.quote(name)}", 25)
+    try:
+        spec = json.loads(raw)[0]
+    except Exception:
+        return {"code": -1, "err": "读取自身容器规格失败"}
+    # 环境变量：当前容器里除 ACCOUNT_* 之外的（含 API_MODE/CRON_SCHEDULE 等），
+    # 账号部分以面板改过的 env.list 为准，这样面板里加/改账号能真正生效
+    # 环境变量：先取当前容器的，再用 env.list（面板改过的）覆盖——这样面板里改账号/并发才真正生效
+    env_map = {}
+    for e in spec.get("Config", {}).get("Env", []):
+        k, _, v = e.partition("=")
+        if k and k not in SKIP_ENV:
+            env_map[k] = v
+    for ln in env_lines():
+        if not ln or ln.lstrip().startswith("#") or "=" not in ln:
+            continue
+        k, _, v = ln.strip().partition("=")
+        if k:
+            env_map[k] = v
+    envs = [f"{k}={v}" for k, v in env_map.items()]
+    hc = spec.get("HostConfig", {})
+    binds = hc.get("Binds") or []
+    ports = hc.get("PortBindings") or {}
+    restart = (hc.get("RestartPolicy") or {}).get("Name") or "unless-stopped"
+
+    cmd = ["docker", "run", "-d", "--name", name, "--restart", restart]
+    for cport, arr in (ports or {}).items():
+        for b in (arr or []):
+            host_ip = b.get("HostIp") or ""
+            host_port = b.get("HostPort") or ""
+            cmd += ["-p", f"{host_ip + ':' if host_ip else ''}{host_port}:{cport}"]
+    for b in binds:
+        cmd += ["-v", b]
+    for e in envs:
+        cmd += ["-e", e]
+    cmd.append(image)
+
+    script = "\n".join([
+        "set -e",
+        "sleep 3",
+        f"docker rm -f {shlex.quote(name)} >/dev/null 2>&1 || true",
+        " ".join(shlex.quote(x) for x in cmd),
+    ]) + "\n"
+
+    rc, out = sh(f"docker pull {shlex.quote(image)}", timeout)
+    pulled = rc == 0
+
+    helper = f"ms-rebuild-{int(time.time())}"
+    rc2, out2 = sh(
+        "docker run -d --rm --name " + shlex.quote(helper)
+        + " -v /var/run/docker.sock:/var/run/docker.sock --entrypoint sh "
+        + shlex.quote(image) + " -c " + shlex.quote(script),
+        60,
+    )
+    if rc2 != 0:
+        return {"code": rc2, "err": ("重建助手启动失败：" + (out2 or "").strip()[-300:])}
+    return {"code": 0,
+            "out": f"容器 {name} 将在 3 秒后用 {image} 重建"
+                   + ("" if pulled else "（拉取镜像失败，使用本地镜像）")}
+
+
 def run_rebuild(timeout=300):
+    if IN_CONTAINER:
+        try:
+            return recreate_in_container(PANEL_IMAGE, timeout)
+        except Exception as e:
+            return {"code": -1, "err": str(e)}
     try:
         p = subprocess.run(["bash", RECREATE, PANEL_IMAGE], capture_output=True, text=True, timeout=timeout)
         return {"code": p.returncode,
