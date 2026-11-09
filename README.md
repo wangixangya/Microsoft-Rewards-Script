@@ -148,13 +148,14 @@ cd panel && python3 server.py     # 0.0.0.0:5310，密码见 panel.conf
 
 ### 三种跑法，任选一种
 
-| 方式 | 镜像 | 需要暴露 | 适合 |
-| :--- | :--- | :--- | :--- |
-| **一体化**（最省事） | `docker.io/wangxiangya/ms-rewards-v5:5-cn-allinone` | **5310**（面板）+ 3010（可选） | 一台机器、一个容器，不用装 Python |
-| **分体**（本机在用） | `ms-rewards-v5:5-cn` + `ms-rewards-v5-panel:latest` | 3010（只给本机）+ 5310 | 想单独升级 / 重启其中一半 |
-| **纯宿主** | `ms-rewards-v5:5-cn` | 3010 | 面板用 `python3 panel/server.py` 跑在宿主机 |
+| 方式                 | 镜像                                                | 需要暴露                       | 适合                                        |
+| :------------------- | :-------------------------------------------------- | :----------------------------- | :------------------------------------------ |
+| **一体化**（最省事） | `docker.io/wangxiangya/ms-rewards-v5:5-cn-allinone` | **5310**（面板）+ 3010（可选） | 一台机器、一个容器，不用装 Python           |
+| **分体**（本机在用） | `ms-rewards-v5:5-cn` + `ms-rewards-v5-panel:latest` | 3010（只给本机）+ 5310         | 想单独升级 / 重启其中一半                   |
+| **纯宿主**           | `ms-rewards-v5:5-cn`                                | 3010                           | 面板用 `python3 panel/server.py` 跑在宿主机 |
 
 **一体化（面板已内置）**
+
 ```bash
 docker run -d --name ms-rewards --restart unless-stopped \
   -p 5310:5310 -e TZ=Asia/Shanghai \
@@ -167,6 +168,7 @@ docker run -d --name ms-rewards --restart unless-stopped \
 ```
 
 **分体（面板独立镜像，约 88 MB）**
+
 ```bash
 docker run -d --name ms-rewards-panel --restart unless-stopped \
   -p 5310:5310 --network host \
@@ -175,17 +177,20 @@ docker run -d --name ms-rewards-panel --restart unless-stopped \
   -v "$PWD/config:/root/microsoft-rewards-script/config:ro" \
   docker.io/wangxiangya/ms-rewards-v5-panel:latest
 ```
+
 或者一条 `docker compose` 起两个容器：[`deploy/docker-compose.yml`](deploy/docker-compose.yml)
 
 - 面板状态都在卷里（`panel.conf`、`state.json`、历史统计），换镜像不丢
 
 **自己构建**（本机已有运行镜像时不用拉 763 MB）
+
 ```bash
 # 面板独立镜像
 docker build -f panel-image/Dockerfile -t ms-rewards-panel:local .
 # 一体化镜像（BASE 指向本地已有运行时镜像）
 docker build -f deploy/Dockerfile.all-in-one --build-arg BASE=ms-rewards:v5-cn -t ms-rewards:allinone .
 ```
+
 - 一体化镜像里的面板默认**不自带定时**（`DISABLE_SCHEDULE=1`），避免和运行时 cron 打架
 
 ---
@@ -309,11 +314,11 @@ cd panel && python3 server.py     # 0.0.0.0:5310, password in panel.conf
 
 Three ways to run it — pick one:
 
-| Setup | Images | Ports | Notes |
-| :--- | :--- | :--- | :--- |
-| **All-in-one** | `ms-rewards-v5:5-cn-allinone` | **5310** (+3010 optional) | One container, panel built in, no Python needed |
-| **Split** | `ms-rewards-v5:5-cn` + `ms-rewards-v5-panel:latest` | 3010 (local only) + 5310 | Upgrade/restart each half independently |
-| **Host panel** | `ms-rewards-v5:5-cn` | 3010 | Run `python3 panel/server.py` on the host |
+| Setup          | Images                                              | Ports                     | Notes                                           |
+| :------------- | :-------------------------------------------------- | :------------------------ | :---------------------------------------------- |
+| **All-in-one** | `ms-rewards-v5:5-cn-allinone`                       | **5310** (+3010 optional) | One container, panel built in, no Python needed |
+| **Split**      | `ms-rewards-v5:5-cn` + `ms-rewards-v5-panel:latest` | 3010 (local only) + 5310  | Upgrade/restart each half independently         |
+| **Host panel** | `ms-rewards-v5:5-cn`                                | 3010                      | Run `python3 panel/server.py` on the host       |
 
 ```bash
 # all-in-one

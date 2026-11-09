@@ -13,38 +13,38 @@
 #     并把 API_BASE 换成宿主地址（容器名解析不到宿主 docker）
 
 services:
-  rewards:
-    image: docker.io/wangxiangya/ms-rewards-v5:5-cn
-    container_name: ms-rewards-api
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      TZ: Asia/Shanghai
-      NODE_ENV: production
-    ports:
-      - "127.0.0.1:3010:3010"
-    volumes:
-      - ./config:/usr/src/microsoft-rewards-script/config
-      - ./sessions:/usr/src/microsoft-rewards-script/sessions
+    rewards:
+        image: docker.io/wangxiangya/ms-rewards-v5:5-cn
+        container_name: ms-rewards-api
+        restart: unless-stopped
+        env_file: .env
+        environment:
+            TZ: Asia/Shanghai
+            NODE_ENV: production
+        ports:
+            - '127.0.0.1:3010:3010'
+        volumes:
+            - ./config:/usr/src/microsoft-rewards-script/config
+            - ./sessions:/usr/src/microsoft-rewards-script/sessions
 
-  panel:
-    image: docker.io/wangxiangya/ms-rewards-v5-panel:latest
-    container_name: ms-rewards-panel
-    restart: unless-stopped
-    depends_on:
-      - rewards
-    environment:
-      TZ: Asia/Shanghai
-      PANEL_PORT: "5310"
-      API_BASE: http://rewards:3010
-      API_TOKEN: ${API_TOKEN:?请先 export API_TOKEN（与 .env 里的一致）}
-      PANEL_PASSWORD: ${PANEL_PASSWORD:-admin}
-    ports:
-      - "5310:5310"
-    volumes:
-      - panel-data:/opt/data
-      - ./config:/root/microsoft-rewards-script/config:ro
-      - ./sessions:/root/microsoft-rewards-script/sessions:ro
+    panel:
+        image: docker.io/wangxiangya/ms-rewards-v5-panel:latest
+        container_name: ms-rewards-panel
+        restart: unless-stopped
+        depends_on:
+            - rewards
+        environment:
+            TZ: Asia/Shanghai
+            PANEL_PORT: '5310'
+            API_BASE: http://rewards:3010
+            API_TOKEN: ${API_TOKEN:?请先 export API_TOKEN（与 .env 里的一致）}
+            PANEL_PASSWORD: ${PANEL_PASSWORD:-admin}
+        ports:
+            - '5310:5310'
+        volumes:
+            - panel-data:/opt/data
+            - ./config:/root/microsoft-rewards-script/config:ro
+            - ./sessions:/root/microsoft-rewards-script/sessions:ro
 
 volumes:
-  panel-data:
+    panel-data:
