@@ -107,6 +107,7 @@ docker run -d --name ms-rewards \
 > - 带凭证拉：`echo <有 read:packages 权限的 PAT> | docker login ghcr.io -u wangixangya --password-stdin`
 > - **免登录离线包**：从 [Release `v5-cn-image`](https://github.com/wangixangya/Microsoft-Rewards-Script/releases/tag/v5-cn-image) 下载 `ms-rewards-v5-cn.tar.zst`，然后
 >   `zstd -d ms-rewards-v5-cn.tar.zst -c | docker load`（导入后标签与学生镜像一致）
+> - **免登录直接 pull（Docker Hub 备份）**：`docker pull docker.io/wangxiangya/ms-rewards:5-cn`
 
 <details>
 <summary><b>本地构建</b></summary>
@@ -251,6 +252,7 @@ docker run -d --name ms-rewards \
 > (`echo <PAT> | docker login ghcr.io -u wangixangya --password-stdin`), or use the **no-login offline archive**
 > from [Release `v5-cn-image`](https://github.com/wangixangya/Microsoft-Rewards-Script/releases/tag/v5-cn-image):
 > `zstd -d ms-rewards-v5-cn.tar.zst -c | docker load`.
+> Or pull the mirrored copy from Docker Hub, no login required: `docker pull docker.io/wangxiangya/ms-rewards:5-cn`
 
 ### Panel
 
