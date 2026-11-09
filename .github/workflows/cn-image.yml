@@ -135,3 +135,53 @@ jobs:
                     echo "- 体积: ${MB} MB（完整版约 1370 MB）"
                     echo "- Docker Hub（免登录）: \`docker.io/${DOCKERHUB_USERNAME}/ms-rewards-v5:5-cn\`"
                   } >> "$GITHUB_STEP_SUMMARY"
+
+    extra-images:
+        name: Build panel & all-in-one images
+        needs: build
+        runs-on: ubuntu-24.04
+        timeout-minutes: 60
+        if: ${{ needs.build.result == 'success' }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: ${{ github.sha }}
+                  persist-credentials: false
+
+            - name: Read version
+              id: ver
+              run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+            - name: Skip when no Docker Hub token
+              if: env.DOCKERHUB_TOKEN == ''
+              run: echo "DOCKERHUB_TOKEN 未配置，跳过多镜像发布"
+
+            - name: Login to Docker Hub
+              if: env.DOCKERHUB_TOKEN != ''
+              uses: docker/login-action@v3
+              with:
+                  registry: docker.io
+                  username: ${{ env.DOCKERHUB_USERNAME }}
+                  password: ${{ env.DOCKERHUB_TOKEN }}
+
+            - name: Build & push all-in-one image (runtime + panel)
+              if: env.DOCKERHUB_TOKEN != ''
+              run: |
+                  set -e
+                  DH="docker.io/${DOCKERHUB_USERNAME}/ms-rewards-v5"
+                  docker build -f deploy/Dockerfile.all-in-one \
+                    --build-arg BASE="${DH}:5-cn" \
+                    -t "${DH}:5-cn-allinone" .
+                  docker push "${DH}:5-cn-allinone"
+                  echo "已推送 ${DH}:5-cn-allinone"
+
+            - name: Build & push panel image
+              if: env.DOCKERHUB_TOKEN != ''
+              run: |
+                  set -e
+                  DP="docker.io/${DOCKERHUB_USERNAME}/ms-rewards-v5-panel"
+                  docker build -f panel-image/Dockerfile \
+                    -t "${DP}:latest" -t "${DP}:${{ steps.ver.outputs.version }}" .
+                  docker push "${DP}:latest"
+                  docker push "${DP}:${{ steps.ver.outputs.version }}"
+                  echo "已推送 ${DP}:latest 与 :${{ steps.ver.outputs.version }}"
