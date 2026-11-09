@@ -90,12 +90,12 @@
 **一条命令装好（内含中文面板）**
 
 ```bash
-bash <(curl -fsSL https://cdn.jsdelivr.net/gh/wangixangya/Microsoft-Rewards-Script@v5/deploy/install.sh) 你的微软邮箱 你的密码
+curl -fsSL https://raw.githubusercontent.com/wangixangya/Microsoft-Rewards-Script/v5/deploy/install.sh | bash -s -- 你的微软邮箱 你的密码
 ```
 
 跑完打开 `http://<本机IP>:5310`，面板密码 `admin`。脚本会自动生成 API token、建好 `config/` 与 `sessions/`、拉镜像并启动容器。
 可选：`PORT=5310`、`DIR=$PWD/ms-rewards`、`PANEL_PASSWORD=admin`、`FORCE=1`（重建已存在的容器）。
-jsDelivr 拉不到时改用：`curl -fsSL https://raw.githubusercontent.com/wangixangya/Microsoft-Rewards-Script/v5/deploy/install.sh | bash -s -- 邮箱 密码`
+国内拉不到时换成镜像加速地址：`curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/wangixangya/Microsoft-Rewards-Script/v5/deploy/install.sh | bash -s -- 邮箱 密码`
 
 <details>
 <summary>不想用一键脚本？手动 docker run</summary>
@@ -300,7 +300,7 @@ Bing origin check widened for `cn.bing.com`, and a single-file JS bundle for Qin
 **One command (panel included)**
 
 ```bash
-bash <(curl -fsSL https://cdn.jsdelivr.net/gh/wangixangya/Microsoft-Rewards-Script@v5/deploy/install.sh) your@email.com yourpassword
+curl -fsSL https://raw.githubusercontent.com/wangixangya/Microsoft-Rewards-Script/v5/deploy/install.sh | bash -s -- your@email.com yourpassword
 ```
 
 Then open `http://<host-ip>:5310` (panel password `admin`). The script generates the API token,
