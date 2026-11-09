@@ -7,12 +7,26 @@
   <img src="https://img.shields.io/badge/version-5.0.0-111111" alt="Version">
   <a href="https://github.com/wangixangya/Microsoft-Rewards-Script/pkgs/container/microsoft-rewards-script"><img src="https://img.shields.io/badge/ghcr.io-5%20%7C%205--cn-2496ED?logo=docker&logoColor=white" alt="GHCR"></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A524-3C873A?logo=node.js&logoColor=white" alt="Node">
+  <a href="https://hub.docker.com/r/wangxiangya/ms-rewards-v5"><img src="https://img.shields.io/docker/pulls/wangxiangya/ms-rewards-v5?logo=docker&logoColor=white&color=2496ED" alt="Docker Pulls"></a>
   <img src="https://img.shields.io/badge/panel-%E4%B8%AD%E6%96%87-111111" alt="Panel">
+  <img src="https://img.shields.io/badge/all--in--one-5310-2496ED" alt="All-in-one">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-4B5563" alt="License"></a>
 </p>
 
 <p align="center">
   <b>简体中文</b> · <a href="#english">English</a> · <a href="README.zh-CN.md">完整中文说明</a> · <a href="docs/usage.md">文档</a> · <a href="docs/control-api.md">控制接口</a>
+</p>
+
+<h3 align="center">一条命令装好 —— 脚本 + 中文面板，同一个容器</h3>
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wangixangya/Microsoft-Rewards-Script/v5/deploy/install.sh | bash -s -- 你的邮箱 你的密码
+```
+
+<p align="center">
+  <sub>装完打开 <code>http://&lt;本机IP&gt;:5310</code>（默认密码 <code>admin</code>）· 需要 2 分钟 · 只要装了 Docker<br>
+  国内拉不到脚本时：把 <code>https://raw.githubusercontent.com/</code> 换成 <code>https://ghfast.top/https://raw.githubusercontent.com/</code><br>
+  English: run the same command with <code>bash -s -- your@email.com yourpassword</code></sub>
 </p>
 
 ---
