@@ -564,6 +564,11 @@ def _recent_schedule_hit(expr, now_min=None, window_min=360):
 
 def scheduler_loop():
     last_fire = load_json(STATE, {}).get("lastFire", "")
+    if IN_CONTAINER:
+        # 单一调度原则：一体化镜像里定时完全交给容器 cron（CRON_SCHEDULE），
+        # 面板这份表单只是它的控制台，自身不再起第二个定时器——否则同一时间会跑两次。
+        log("[sched] 容器模式：面板定时线程不启用，唯一调度=容器 cron")
+        return
     while True:
         try:
             cfg = load_json(SCHED, {"enabled": False, "cron": "0 7 * * *"})
@@ -2000,11 +2005,18 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, self_update_status())
 
         if p == "/panel/schedule":
-            return self.send_json(200, load_json(SCHED, {"enabled": False, "cron": "0 7 * * *"}))
+            d = load_json(SCHED, {"enabled": False, "cron": "0 7 * * *"})
+            if isinstance(d, dict):
+                # 面板自身不再定时（避免与容器 cron 双跑）；这里附上容器真实调度供前端展示
+                d["cron"] = os.environ.get("CRON_SCHEDULE", "")
+                d["cronOn"] = os.environ.get("DISABLE_SCHEDULE", "0") not in ("1", "true", "yes")
+            return self.send_json(200, d)
 
         if p == "/panel/version":
             return self.send_json(200, {"version": VERSION, "build": BUILD_DATE,
                                         "docker": docker_ok(),
+                                        "cron": os.environ.get("CRON_SCHEDULE", ""),
+                                        "cronOn": os.environ.get("DISABLE_SCHEDULE", "0") not in ("1", "true", "yes"),
                                         "schedule": load_json(SCHED, {})})
 
         if p == "/panel/system":
@@ -2251,6 +2263,8 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/panel/version":
             return self.send_json(200, {"version": VERSION, "build": BUILD_DATE,
                                         "docker": docker_ok(),
+                                        "cron": os.environ.get("CRON_SCHEDULE", ""),
+                                        "cronOn": os.environ.get("DISABLE_SCHEDULE", "0") not in ("1", "true", "yes"),
                                         "schedule": load_json(SCHED, {})})
 
         if p == "/panel/backup":
@@ -2527,6 +2541,14 @@ class Handler(BaseHTTPRequestHandler):
                     clean[str(int(k))] = {"enabled": bool(v.get("enabled")), "cron": c}
                 cfg["accounts"] = clean
             save_json(SCHED, cfg)
+            if IN_CONTAINER:
+                # 单一调度：面板这份表单直接写容器的 CRON_SCHEDULE，改完自重建，
+                # 从此全局只有「容器 cron」一个定时器（面板自身的定时线程永久停用）。
+                set_env_key("CRON_SCHEDULE", cfg["cron"])
+                set_env_key("DISABLE_SCHEDULE", "0" if cfg["enabled"] else "1")
+                res = recreate_in_container(PANEL_IMAGE)
+                return self.send_json(200, {"ok": True, "schedule": cfg, "rebuild": res,
+                                            "message": "已写入容器 cron 并重建，唯一调度生效"})
             return self.send_json(200, {"ok": True, "schedule": cfg})
 
         if p == "/panel/notify" and method == "PUT":

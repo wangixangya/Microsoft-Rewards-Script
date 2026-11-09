@@ -975,7 +975,8 @@ async function loadSettingsInfo() {
   try {
     const v = await papi('/panel/version');
     $('#setVer').textContent = `v${v.version} · ${v.build}`;
-    $('#setSched').textContent = v.schedule?.enabled ? v.schedule.cron : '关闭';
+    const cronTxt = (v.cronOn && v.cron) ? `容器 ${v.cron}（唯一调度）` : '关闭（仅手动运行）';
+    $('#setSched').textContent = cronTxt;
     if (v.docker === false) applyNoDocker();
   } catch (e) {}
   try {
@@ -1598,10 +1599,15 @@ $('#saveJson').onclick = async () => {
 let SCHED = {enabled: true, cron: '0 7 * * *'};
 async function loadSched() {
   SCHED = await (await fetch('/panel/schedule')).json();
-  $('#schedSw').classList.toggle('on', !!SCHED.enabled);
+  const _on = (SCHED.cronOn !== undefined) ? !!SCHED.cronOn : !!SCHED.enabled;
+  $('#schedSw').classList.toggle('on', _on);
   $('#cronInput').value = SCHED.cron || '0 7 * * *';
-  $('#schedInfo').textContent = SCHED.enabled ? '已启用，按 cron 触发。' : '已关闭，只能手动运行。';
-  $('#footSched').textContent = SCHED.enabled ? SCHED.cron : 'off';
+  $('#schedInfo').textContent = _on
+    ? '唯一调度：由容器内 cron 执行；改这里会重建容器。'
+    : '已关闭，只能手动运行。';
+  $('#footSched').textContent = (SCHED.cronOn && SCHED.cron)
+    ? `容器 ${SCHED.cron}`
+    : (SCHED.enabled ? SCHED.cron : 'off');
   renderAcctSched();
   try {
     const c = await papi('/panel/clusters');
@@ -1638,7 +1644,7 @@ const TIPS = [
   ['[data-sec="conf"]', '任务配置：直接编辑 config.json，开关每日任务/活动/打卡，改延迟与并发'],
   ['[data-sec="rewards"]', '奖励中心：查余额与可领取积分，手动或自动领取'],
   ['[data-sec="settings"]', '设置：运行计划、推送、代理、镜像更新、备份恢复、发布中心的入口'],
-  ['#footSched', '当前定时表达式；off 表示自动运行已关闭'],
+  ['#footSched', '唯一调度：容器内 cron（面板自身不再定时，避免重复跑）'],
   ['#logoutBtn', '退出登录：清掉面板 Cookie，下次需要重新输密码'],
 
   /* —— 顶栏 & 总览 —— */
