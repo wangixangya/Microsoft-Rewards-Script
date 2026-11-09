@@ -1472,6 +1472,7 @@ def _ct_log(msg):
     line = time.strftime("%H:%M:%S ") + msg
     _CT_UPDATE["log"] = (_CT_UPDATE["log"] + [line])[-40:]
     try:
+        os.makedirs(os.path.dirname(REMOTE_LOG), exist_ok=True)
         with open(REMOTE_LOG, "a", encoding="utf-8") as f:
             f.write(line + "\n")
     except Exception:
@@ -1509,6 +1510,9 @@ def start_container_update(no_recreate=False):
 
 
 def start_remote_update(no_recreate=False):
+    if IN_CONTAINER:
+        # 一体化镜像里没有宿主脚本，直接走「拉镜像 + 自助重建」
+        return start_container_update(no_recreate)
     if _remote_running():
         return False
     if run_state() == "running":
