@@ -237,6 +237,11 @@ docker run -d --name ms-rewards --restart unless-stopped \
   docker.io/wangxiangya/ms-rewards-v5:5-cn-allinone-docker
 ```
 
+这个变体可以用面板里的：
+
+- **重建容器** —— 改账号 / 并发 / 代理后自动按新配置重建自己
+- **镜像更新** —— 一键拉 Docker Hub 最新镜像并自助重建（日志在面板里可查）
+
 ⚠️ 挂 `docker.sock` 等于把宿主 docker 权限交给容器，只在你信任这个镜像时用。
 
 ---
