@@ -241,6 +241,18 @@ RC_SCRIPT = os.environ.get("RC_SCRIPT") or (
 RC_DIR = os.environ.get("RC_DIR") or (os.path.join(BASE, "tmp") if IN_CONTAINER else "/root/ms-rewards-probe")
 RC_CACHE = {}
 RC_LOCK = threading.Lock()
+_DOCKER_OK = {"at": 0, "val": None}
+
+
+def docker_ok(ttl=120):
+    """容器内是否真的能操作 docker（需要 CLI + docker.sock）。宿主机模式恒为 True。"""
+    if not IN_CONTAINER:
+        return True
+    if time.time() - _DOCKER_OK["at"] < ttl and _DOCKER_OK["val"] is not None:
+        return _DOCKER_OK["val"]
+    rc, _ = sh("docker info >/dev/null 2>&1", 12)
+    _DOCKER_OK.update(at=time.time(), val=(rc == 0))
+    return rc == 0
 
 
 def export_cookies(email):
@@ -1992,6 +2004,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/panel/version":
             return self.send_json(200, {"version": VERSION, "build": BUILD_DATE,
+                                        "docker": docker_ok(),
                                         "schedule": load_json(SCHED, {})})
 
         if p == "/panel/system":
@@ -2237,6 +2250,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/panel/version":
             return self.send_json(200, {"version": VERSION, "build": BUILD_DATE,
+                                        "docker": docker_ok(),
                                         "schedule": load_json(SCHED, {})})
 
         if p == "/panel/backup":

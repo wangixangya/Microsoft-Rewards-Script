@@ -19,7 +19,8 @@
   --shadow:0 1px 2px rgba(9,9,11,.04),0 10px 30px rgba(9,9,11,.06);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%}
+.nodocker-bar{background:#111;color:#fff;font-size:13px;padding:8px 16px;text-align:center}
+    html,body{height:100%}
 body{
   font-family:Inter,system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
   background:var(--bg);color:var(--txt);font-size:14px;-webkit-font-smoothing:antialiased;
@@ -955,11 +956,27 @@ $('#relSync').onclick = async () => {
   }
 };
 
+let _noDocker = false;
+function applyNoDocker() {
+  if (_noDocker) return;
+  _noDocker = true;
+  const ids = ['updRunBtn', 'updRemoteBtn', 'updCheckBtn', 'saveClusters', 'selfUpdBtn', 'relBuildJs'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.disabled = true; el.title = '当前容器没有 docker 权限（未挂 /var/run/docker.sock）'; }
+  });
+  const bar = document.createElement('div');
+  bar.className = 'nodocker-bar';
+  bar.textContent = '当前为「无 docker 模式」：重建容器、镜像更新不可用 —— 需要给容器挂 -v /var/run/docker.sock';
+  document.body.prepend(bar);
+}
+
 async function loadSettingsInfo() {
   try {
     const v = await papi('/panel/version');
     $('#setVer').textContent = `v${v.version} · ${v.build}`;
     $('#setSched').textContent = v.schedule?.enabled ? v.schedule.cron : '关闭';
+    if (v.docker === false) applyNoDocker();
   } catch (e) {}
   try {
     const c = await papi('/panel/clusters');
