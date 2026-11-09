@@ -247,6 +247,11 @@ docker run -d --name ms-rewards \
 | `ghcr.io/wangixangya/microsoft-rewards-script:5`    | This fork, mirrored               |
 | `ghcr.io/wangixangya/microsoft-rewards-script:5-cn` | **CN patch + slim** (recommended) |
 
+> **Cannot pull?** If ghcr returns `denied` / `403`: either log in with a PAT that has `read:packages`
+> (`echo <PAT> | docker login ghcr.io -u wangixangya --password-stdin`), or use the **no-login offline archive**
+> from [Release `v5-cn-image`](https://github.com/wangixangya/Microsoft-Rewards-Script/releases/tag/v5-cn-image):
+> `zstd -d ms-rewards-v5-cn.tar.zst -c | docker load`.
+
 ### Panel
 
 A single-file, dependency-free control panel for the running container, built for phones as much
