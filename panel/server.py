@@ -1296,7 +1296,10 @@ SYNC_JOB = "f1661c51bde3"
 
 REMOTE_IMG = "ghcr.io/wangixangya/microsoft-rewards-script:5-cn"
 REMOTE_TAG = "ms-rewards:v5-ci"
-REMOTE_LOG = "/root/.hermes/logs/ms-remote-image.log"
+REMOTE_LOG = os.environ.get("REMOTE_LOG") or (
+    os.path.join(BASE, "tmp", "ms-remote-image.log") if IN_CONTAINER
+    else "/root/.hermes/logs/ms-remote-image.log"
+)
 REMOTE_SCRIPT = os.path.join(BASE, "update-remote.sh")
 
 
@@ -1449,6 +1452,8 @@ def start_sync():
 
 
 def _remote_running():
+    if IN_CONTAINER:
+        return bool(_CT_UPDATE["running"])
     out = _sh(["ps", "-eo", "args"], 8) or ""
     for ln in out.splitlines():
         t = ln.strip()
@@ -1456,6 +1461,51 @@ def _remote_running():
                  f"bash {REMOTE_SCRIPT} --no-recreate"):
             return True
     return False
+
+
+CONTAINER_UPDATE_IMAGE = (CONF_D.get("UPDATE_IMAGE") or os.environ.get("UPDATE_IMAGE")
+                          or "docker.io/wangxiangya/ms-rewards-v5:5-cn-allinone-docker")
+_CT_UPDATE = {"running": False, "log": []}
+
+
+def _ct_log(msg):
+    line = time.strftime("%H:%M:%S ") + msg
+    _CT_UPDATE["log"] = (_CT_UPDATE["log"] + [line])[-40:]
+    try:
+        with open(REMOTE_LOG, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+
+
+def _ct_update_worker(image, recreate):
+    try:
+        _ct_log(f"拉取镜像 {image}")
+        rc, out = sh(f"docker pull {shlex.quote(image)}", 900)
+        if rc != 0:
+            _ct_log(f"拉取失败：{(out or '').strip()[-200:]}")
+            return
+        _ct_log("拉取完成")
+        if recreate:
+            res = recreate_in_container(image)
+            _ct_log(f"重建：{res.get('out') or res.get('err')}")
+    except Exception as e:
+        _ct_log(f"更新异常：{e}")
+    finally:
+        _CT_UPDATE["running"] = False
+
+
+def start_container_update(no_recreate=False):
+    """容器内更新：拉 Docker Hub 上的最新镜像，再按规格重建自己。"""
+    if _CT_UPDATE["running"]:
+        return False
+    if run_state() == "running":
+        return None
+    _CT_UPDATE["running"] = True
+    threading.Thread(target=_ct_update_worker,
+                     args=(CONTAINER_UPDATE_IMAGE, not no_recreate),
+                     daemon=True).start()
+    return True
 
 
 def start_remote_update(no_recreate=False):
@@ -2340,6 +2390,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, {"ok": ok, "message": msg})
 
         if p == "/panel/update":
+            if IN_CONTAINER:
+                rc = start_container_update()
+                if rc is None:
+                    return self.send_json(409, {"ok": False, "error": "积分任务正在运行，先停下再更新"})
+                return self.send_json(202 if rc else 409,
+                                      {"ok": rc, "message": "已开始拉取新镜像" if rc else "更新进行中",
+                                       "image": CONTAINER_UPDATE_IMAGE})
             ok, msg = start_update()
             return self.send_json(200 if ok else 409, {"ok": ok, "message": msg, "status": update_status()})
 
