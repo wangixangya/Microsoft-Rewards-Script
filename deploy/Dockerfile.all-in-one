@@ -43,6 +43,6 @@ VOLUME ["/opt/data"]
 EXPOSE 3010 5310
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-    CMD curl -fsS "http://127.0.0.1:${PANEL_PORT}/panel/version" -o /dev/null || exit 1
+    CMD curl -fsS "http://127.0.0.1:${PANEL_PORT}/" -o /dev/null || exit 1
 
 ENTRYPOINT ["/usr/local/bin/panel-allinone.sh"]
