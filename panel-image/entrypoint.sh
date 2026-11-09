@@ -13,6 +13,15 @@ if [ ! -f "$DATA/server.py" ]; then
     cp -a "$APP"/. "$DATA"/
 fi
 
+# 代码文件每次启动都从镜像刷新（数据文件不动：panel.conf / *.json / tmp）
+CODE_FILES="server.py index.html notify.py stats.py rewards-center.js README.md env.example panel.conf.example recreate_ms.sh self-update.sh update-image.sh update-remote.sh"
+for f in $CODE_FILES; do
+    [ -f "$APP/$f" ] && cp -f "$APP/$f" "$DATA/$f"
+done
+for d in ql systemd; do
+    [ -d "$APP/$d" ] && cp -a "$APP/$d" "$DATA/"
+done
+
 # 生成 panel.conf：环境变量优先，其次保留已有文件
 if [ ! -f "$DATA/panel.conf" ]; then
     if [ -z "${API_TOKEN:-}" ]; then

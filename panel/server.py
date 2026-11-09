@@ -71,10 +71,10 @@ def run_history_today():
     return out
 
 
-def sh(cmd, timeout=60):
-    """跑一条只读 shell 命令，返回 (rc, stdout+stderr)。"""
+def sh(cmd, timeout=60, env=None):
+    """跑一条只读 shell 命令，返回 (rc, stdout+stderr)。env 为空时继承当前环境。"""
     try:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout, env=env)
         return r.returncode, (r.stdout or "") + (r.stderr or "")
     except Exception as e:
         return 1, str(e)
@@ -231,7 +231,13 @@ def start_self_restart():
 
 
 SESS_DB = "/root/microsoft-rewards-script/sessions/sessions.db"
-RC_SCRIPT = "/root/ms-panel/rewards-center.js"
+# 一体化镜像（脚本 + 面板同一容器）里不需要 docker cp / docker exec：
+#   容器内直接跑面板目录自带的 rewards-center.js，cookie 也写在本地面板目录
+IN_CONTAINER = os.environ.get("PANEL_IN_CONTAINER", "").lower() in ("1", "true", "yes") or os.path.exists("/.dockerenv")
+RC_SCRIPT = os.environ.get("RC_SCRIPT") or (
+    os.path.join(BASE, "rewards-center.js") if IN_CONTAINER else "/root/ms-panel/rewards-center.js"
+)
+RC_DIR = os.environ.get("RC_DIR") or (os.path.join(BASE, "tmp") if IN_CONTAINER else "/root/ms-rewards-probe")
 RC_CACHE = {}
 RC_LOCK = threading.Lock()
 
@@ -262,7 +268,8 @@ def export_cookies(email):
             item["expires"] = float(c["expires"])
         out.append(item)
     local = str(email).split("@")[0]
-    path = f"/root/ms-rewards-probe/cookies_{local}.json"
+    path = os.path.join(RC_DIR, f"cookies_{local}.json")
+    os.makedirs(RC_DIR, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(out, f)
     return path
@@ -280,14 +287,24 @@ def rewards_run(email, claim=False, use_cache=True):
             ck = export_cookies(email)
         except Exception as e:
             return {"ok": False, "errors": [str(e)]}
-        sh(f"docker cp {ck} ms-rewards-api:/tmp/rc-cookies.json", timeout=20)
-        sh(f"docker cp {RC_SCRIPT} ms-rewards-api:/tmp/rewards-center.js", timeout=20)
         flag = "--claim" if claim else ""
-        rc, out = sh(
-            "docker exec -e PLAYWRIGHT_BROWSERS_PATH=/usr/src/microsoft-rewards-script/node_modules/"
-            f"patchright-core/.local-browsers ms-rewards-api node /tmp/rewards-center.js /tmp/rc-cookies.json {flag}",
-            timeout=240,
-        )
+        if IN_CONTAINER:
+            # 同一容器：直接本地跑，省掉 docker cp/exec（一体化镜像没有 docker CLI）
+            env = dict(os.environ)
+            env.setdefault("PLAYWRIGHT_BROWSERS_PATH",
+                           "/usr/src/microsoft-rewards-script/node_modules/patchright-core/.local-browsers")
+            rc, out = sh(
+                f"cd /usr/src/microsoft-rewards-script && node {RC_SCRIPT} {ck} {flag}",
+                timeout=240, env=env,
+            )
+        else:
+            sh(f"docker cp {ck} ms-rewards-api:/tmp/rc-cookies.json", timeout=20)
+            sh(f"docker cp {RC_SCRIPT} ms-rewards-api:/tmp/rewards-center.js", timeout=20)
+            rc, out = sh(
+                "docker exec -e PLAYWRIGHT_BROWSERS_PATH=/usr/src/microsoft-rewards-script/node_modules/"
+                f"patchright-core/.local-browsers ms-rewards-api node /tmp/rewards-center.js /tmp/rc-cookies.json {flag}",
+                timeout=240,
+            )
     data = {"ok": False, "errors": [out.strip()[-400:] or "无输出"]}
     for line in reversed((out or "").strip().splitlines()):
         line = line.strip()

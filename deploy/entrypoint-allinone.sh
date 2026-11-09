@@ -14,6 +14,15 @@ if [ ! -f "$DATA/server.py" ]; then
     cp -a "$APP"/. "$DATA"/
 fi
 
+# 代码文件每次启动都从镜像刷新（数据文件不动：panel.conf / *.json / tmp）
+CODE_FILES="server.py index.html notify.py stats.py rewards-center.js README.md env.example panel.conf.example recreate_ms.sh self-update.sh update-image.sh update-remote.sh"
+for f in $CODE_FILES; do
+    [ -f "$APP/$f" ] && cp -f "$APP/$f" "$DATA/$f"
+done
+for d in ql systemd; do
+    [ -d "$APP/$d" ] && cp -a "$APP/$d" "$DATA/"
+done
+
 # 2) 账号清单：面板的「账号与会话」读 env.list，这里从容器环境变量生成
 env | grep -E '^ACCOUNT_[0-9]+_[A-Z0-9_]+=' | sort > "$DATA/env.list" || true
 [ -f "$DATA/env.list" ] && chmod 600 "$DATA/env.list"
