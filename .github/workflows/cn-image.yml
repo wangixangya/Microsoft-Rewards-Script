@@ -113,7 +113,7 @@ jobs:
               if: env.DOCKERHUB_TOKEN != ''
               run: |
                   set -e
-                  DH="docker.io/${DOCKERHUB_USERNAME}/ms-rewards"
+                  DH="docker.io/${DOCKERHUB_USERNAME}/ms-rewards-v5"
                   docker tag "$IMAGE:5-cn" "$DH:5-cn"
                   docker tag "$IMAGE:5-cn" "$DH:latest"
                   docker tag "$IMAGE:${{ steps.ver.outputs.version }}-cn" "$DH:${{ steps.ver.outputs.version }}-cn"
@@ -133,5 +133,5 @@ jobs:
                     echo "- \`$IMAGE:5-cn\`"
                     echo "- \`$IMAGE:${{ steps.ver.outputs.version }}-cn\`"
                     echo "- 体积: ${MB} MB（完整版约 1370 MB）"
-                    echo "- Docker Hub（免登录）: \`docker.io/${DOCKERHUB_USERNAME}/ms-rewards:5-cn\`"
+                    echo "- Docker Hub（免登录）: \`docker.io/${DOCKERHUB_USERNAME}/ms-rewards-v5:5-cn\`"
                   } >> "$GITHUB_STEP_SUMMARY"

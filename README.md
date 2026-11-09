@@ -107,7 +107,7 @@ docker run -d --name ms-rewards \
 > - 带凭证拉：`echo <有 read:packages 权限的 PAT> | docker login ghcr.io -u wangixangya --password-stdin`
 > - **免登录离线包**：从 [Release `v5-cn-image`](https://github.com/wangixangya/Microsoft-Rewards-Script/releases/tag/v5-cn-image) 下载 `ms-rewards-v5-cn.tar.zst`，然后
 >   `zstd -d ms-rewards-v5-cn.tar.zst -c | docker load`（导入后标签与学生镜像一致）
-> - **免登录直接 pull（Docker Hub 备份）**：`docker pull docker.io/wangxiangya/ms-rewards:5-cn`
+> - **免登录直接 pull（Docker Hub 备份）**：`docker pull docker.io/wangxiangya/ms-rewards-v5:5-cn`
 
 <details>
 <summary><b>本地构建</b></summary>
@@ -145,6 +145,40 @@ npm start
 ```bash
 cd panel && python3 server.py     # 0.0.0.0:5310，密码见 panel.conf
 ```
+
+### 三种跑法，任选一种
+
+| 方式 | 镜像 | 需要暴露 | 适合 |
+| :--- | :--- | :--- | :--- |
+| **一体化**（最省事） | `docker.io/wangxiangya/ms-rewards-v5:5-cn-allinone` | **5310**（面板）+ 3010（可选） | 一台机器、一个容器，不用装 Python |
+| **分体**（本机在用） | `ms-rewards-v5:5-cn` + `ms-rewards-v5-panel:latest` | 3010（只给本机）+ 5310 | 想单独升级 / 重启其中一半 |
+| **纯宿主** | `ms-rewards-v5:5-cn` | 3010 | 面板用 `python3 panel/server.py` 跑在宿主机 |
+
+**一体化（面板已内置）**
+```bash
+docker run -d --name ms-rewards --restart unless-stopped \
+  -p 5310:5310 -e TZ=Asia/Shanghai \
+  -e API_TOKEN=<你的 API_TOKEN> -e PANEL_PASSWORD=admin \
+  -v "$PWD/config:/usr/src/microsoft-rewards-script/config" \
+  -v "$PWD/sessions:/usr/src/microsoft-rewards-script/sessions" \
+  -v ms-panel-data:/opt/data \
+  --env-file .env docker.io/wangxiangya/ms-rewards-v5:5-cn-allinone
+# 打开 http://<IP>:5310 就是面板，容器内 API 自己监听 3010
+```
+
+**分体（面板独立镜像，约 88 MB）**
+```bash
+docker run -d --name ms-rewards-panel --restart unless-stopped \
+  -p 5310:5310 --network host \
+  -e API_BASE=http://127.0.0.1:3010 -e API_TOKEN=<同上> -e PANEL_PASSWORD=admin \
+  -v panel-data:/opt/data \
+  -v "$PWD/config:/root/microsoft-rewards-script/config:ro" \
+  docker.io/wangxiangya/ms-rewards-v5-panel:latest
+```
+或者一条 `docker compose` 起两个容器：[`deploy/docker-compose.yml`](deploy/docker-compose.yml)
+
+- 面板状态都在卷里（`panel.conf`、`state.json`、历史统计），换镜像不丢
+- 一体化镜像里的面板默认**不自带定时**（`DISABLE_SCHEDULE=1`），避免和运行时 cron 打架
 
 ---
 
@@ -252,7 +286,7 @@ docker run -d --name ms-rewards \
 > (`echo <PAT> | docker login ghcr.io -u wangixangya --password-stdin`), or use the **no-login offline archive**
 > from [Release `v5-cn-image`](https://github.com/wangixangya/Microsoft-Rewards-Script/releases/tag/v5-cn-image):
 > `zstd -d ms-rewards-v5-cn.tar.zst -c | docker load`.
-> Or pull the mirrored copy from Docker Hub, no login required: `docker pull docker.io/wangxiangya/ms-rewards:5-cn`
+> Or pull the mirrored copy from Docker Hub, no login required: `docker pull docker.io/wangxiangya/ms-rewards-v5:5-cn`
 
 ### Panel
 
@@ -264,6 +298,28 @@ image/release management and config backup.
 ```bash
 cd panel && python3 server.py     # 0.0.0.0:5310, password in panel.conf
 ```
+
+Three ways to run it — pick one:
+
+| Setup | Images | Ports | Notes |
+| :--- | :--- | :--- | :--- |
+| **All-in-one** | `ms-rewards-v5:5-cn-allinone` | **5310** (+3010 optional) | One container, panel built in, no Python needed |
+| **Split** | `ms-rewards-v5:5-cn` + `ms-rewards-v5-panel:latest` | 3010 (local only) + 5310 | Upgrade/restart each half independently |
+| **Host panel** | `ms-rewards-v5:5-cn` | 3010 | Run `python3 panel/server.py` on the host |
+
+```bash
+# all-in-one
+docker run -d --name ms-rewards --restart unless-stopped -p 5310:5310 \
+  -e TZ=Asia/Shanghai -e API_TOKEN=<token> -e PANEL_PASSWORD=admin \
+  -v "$PWD/config:/usr/src/microsoft-rewards-script/config" \
+  -v "$PWD/sessions:/usr/src/microsoft-rewards-script/sessions" \
+  -v ms-panel-data:/opt/data --env-file .env \
+  docker.io/wangxiangya/ms-rewards-v5:5-cn-allinone
+```
+
+A ready-to-use two-service stack lives in [`deploy/docker-compose.yml`](deploy/docker-compose.yml).
+Panel state persists in the `panel-data` volume; the all-in-one image disables the panel's own
+scheduler (`DISABLE_SCHEDULE=1`) so it never competes with the runtime cron.
 
 ### Documentation
 

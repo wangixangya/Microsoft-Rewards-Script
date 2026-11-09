@@ -14,7 +14,7 @@
 
 services:
   rewards:
-    image: docker.io/wangixangya/ms-rewards:5-cn
+    image: docker.io/wangxiangya/ms-rewards-v5:5-cn
     container_name: ms-rewards-api
     restart: unless-stopped
     env_file: .env
@@ -28,7 +28,7 @@ services:
       - ./sessions:/usr/src/microsoft-rewards-script/sessions
 
   panel:
-    image: docker.io/wangixangya/ms-rewards-panel:latest
+    image: docker.io/wangxiangya/ms-rewards-v5-panel:latest
     container_name: ms-rewards-panel
     restart: unless-stopped
     depends_on:

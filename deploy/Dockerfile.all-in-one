@@ -1,0 +1,48 @@
+# 一体化镜像：运行时 + 中文控制面板（一个容器搞定）
+#
+# 基于已打 cn.bing.com 补丁的运行时镜像，塞进面板本体（标准库 Python，无第三方依赖）
+# 端口：5310 = 控制面板，3010 = 控制 API（可选对外）
+# 基础镜像可用 --build-arg BASE=... 覆盖（本机已有本地标签时传 ms-rewards:v5-cn 可跳过拉取）
+ARG BASE=docker.io/wangixangya/ms-rewards-v5:5-cn
+FROM ${BASE}
+
+LABEL org.opencontainers.image.title="ms-rewards-all-in-one" \
+      org.opencontainers.image.description="Microsoft-Rewards-Script v5 CN runtime with built-in web panel" \
+      org.opencontainers.image.source="https://github.com/wangixangya/Microsoft-Rewards-Script" \
+      org.opencontainers.image.licenses="MIT"
+
+# Debian 源换国内镜像（--build-arg DEB_MIRROR=... 覆盖；留空则用官方源）
+ARG DEB_MIRROR=https://mirrors.ustc.edu.cn/debian
+ARG DEB_SEC_MIRROR=https://mirrors.ustc.edu.cn/debian-security
+RUN if [ -n "$DEB_MIRROR" ]; then \
+        rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; \
+        printf 'deb %s bookworm main\ndeb %s bookworm-updates main\ndeb %s bookworm-security main\n' \
+            "$DEB_MIRROR" "$DEB_MIRROR" "$DEB_SEC_MIRROR" > /etc/apt/sources.list; \
+    fi \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends python3 curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 面板代码（只读）+ 一体化入口
+COPY panel/ /opt/panel-app/
+COPY deploy/entrypoint-allinone.sh /usr/local/bin/panel-allinone.sh
+RUN chmod +x /usr/local/bin/panel-allinone.sh /opt/panel-app/*.sh 2>/dev/null || true
+
+# 面板里写死的宿主路径 → 指向镜像内真实路径（run-history / config / sessions 都能读到）
+RUN mkdir -p /root && ln -sfn /usr/src/microsoft-rewards-script /root/microsoft-rewards-script
+
+ENV API_MODE=true \
+    API_HOST=0.0.0.0 \
+    API_PORT=3010 \
+    PANEL_PORT=5310 \
+    PANEL_DATA=/opt/data \
+    TZ=Asia/Shanghai \
+    PYTHONUNBUFFERED=1
+
+VOLUME ["/opt/data"]
+EXPOSE 3010 5310
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:${PANEL_PORT}/panel/version" -o /dev/null || exit 1
+
+ENTRYPOINT ["/usr/local/bin/panel-allinone.sh"]
