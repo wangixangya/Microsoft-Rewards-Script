@@ -87,14 +87,31 @@
 
 ## 快速开始
 
+**一条命令装好（内含中文面板）**
+
 ```bash
-docker run -d --name ms-rewards \
-  -e TZ=Asia/Shanghai \
-  -e CONFIG_CLUSTERS=2 \
+bash <(curl -fsSL https://cdn.jsdelivr.net/gh/wangixangya/Microsoft-Rewards-Script@v5/deploy/install.sh) 你的微软邮箱 你的密码
+```
+
+跑完打开 `http://<本机IP>:5310`，面板密码 `admin`。脚本会自动生成 API token、建好 `config/` 与 `sessions/`、拉镜像并启动容器。
+可选：`PORT=5310`、`DIR=$PWD/ms-rewards`、`PANEL_PASSWORD=admin`、`FORCE=1`（重建已存在的容器）。
+jsDelivr 拉不到时改用：`curl -fsSL https://raw.githubusercontent.com/wangixangya/Microsoft-Rewards-Script/v5/deploy/install.sh | bash -s -- 邮箱 密码`
+
+<details>
+<summary>不想用一键脚本？手动 docker run</summary>
+
+```bash
+docker run -d --name ms-rewards --restart unless-stopped \
+  -p 5310:5310 -e TZ=Asia/Shanghai \
+  -e API_TOKEN=<自己生成一串> -e PANEL_PASSWORD=admin \
+  -e ACCOUNT_1_EMAIL=你的邮箱 -e ACCOUNT_1_PASSWORD=你的密码 \
   -v "$PWD/config:/usr/src/microsoft-rewards-script/config" \
   -v "$PWD/sessions:/usr/src/microsoft-rewards-script/sessions" \
-  ghcr.io/wangixangya/microsoft-rewards-script:5-cn
+  -v ms-panel-data:/opt/data \
+  docker.io/wangxiangya/ms-rewards-v5:5-cn-allinone
 ```
+
+</details>
 
 | 镜像                                                | 用途                          |
 | :-------------------------------------------------- | :---------------------------- |
@@ -279,6 +296,16 @@ self-hosted release pipeline.
 Bing origin check widened for `cn.bing.com`, and a single-file JS bundle for QingLong or Node-only hosts.
 
 ### Quick start
+
+**One command (panel included)**
+
+```bash
+bash <(curl -fsSL https://cdn.jsdelivr.net/gh/wangixangya/Microsoft-Rewards-Script@v5/deploy/install.sh) your@email.com yourpassword
+```
+
+Then open `http://<host-ip>:5310` (panel password `admin`). The script generates the API token,
+creates `config/` and `sessions/`, pulls the all-in-one image and starts the container.
+Overrides: `PORT`, `DIR`, `PANEL_PASSWORD`, `FORCE=1`.
 
 ```bash
 docker run -d --name ms-rewards \
