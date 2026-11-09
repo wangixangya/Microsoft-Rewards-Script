@@ -184,6 +184,17 @@ jobs:
                   docker push "${DH}:5-cn-allinone"
                   echo "已推送 ${DH}:5-cn-allinone"
 
+            - name: Build & push all-in-one + docker CLI image
+              if: env.DOCKERHUB_TOKEN != ''
+              run: |
+                  set -e
+                  DH="docker.io/${DOCKERHUB_USERNAME}/ms-rewards-v5"
+                  docker build -f deploy/Dockerfile.all-in-one-docker \
+                    --build-arg BASE="${DH}:5-cn-allinone" \
+                    -t "${DH}:5-cn-allinone-docker" .
+                  docker push "${DH}:5-cn-allinone-docker"
+                  echo "已推送 ${DH}:5-cn-allinone-docker"
+
             - name: Build & push panel image
               if: env.DOCKERHUB_TOKEN != ''
               run: |

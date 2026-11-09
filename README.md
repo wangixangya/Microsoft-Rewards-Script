@@ -179,11 +179,12 @@ cd panel && python3 server.py     # 0.0.0.0:5310，密码见 panel.conf
 
 ### 三种跑法，任选一种
 
-| 方式                 | 镜像                                                | 需要暴露                       | 适合                                        |
-| :------------------- | :-------------------------------------------------- | :----------------------------- | :------------------------------------------ |
-| **一体化**（最省事） | `docker.io/wangxiangya/ms-rewards-v5:5-cn-allinone` | **5310**（面板）+ 3010（可选） | 一台机器、一个容器，不用装 Python           |
-| **分体**（本机在用） | `ms-rewards-v5:5-cn` + `ms-rewards-v5-panel:latest` | 3010（只给本机）+ 5310         | 想单独升级 / 重启其中一半                   |
-| **纯宿主**           | `ms-rewards-v5:5-cn`                                | 3010                           | 面板用 `python3 panel/server.py` 跑在宿主机 |
+| 方式                    | 镜像                                                | 需要暴露                       | 适合                                        |
+| :---------------------- | :-------------------------------------------------- | :----------------------------- | :------------------------------------------ |
+| **一体化**（最省事）    | `docker.io/wangxiangya/ms-rewards-v5:5-cn-allinone` | **5310**（面板）+ 3010（可选） | 一台机器、一个容器，不用装 Python           |
+| **一体化 + docker CLI** | `...:5-cn-allinone-docker`                          | 同上 + 挂 `docker.sock`        | 想在面板里直接管容器 / 镜像（+30 MB）       |
+| **分体**（本机在用）    | `ms-rewards-v5:5-cn` + `ms-rewards-v5-panel:latest` | 3010（只给本机）+ 5310         | 想单独升级 / 重启其中一半                   |
+| **纯宿主**              | `ms-rewards-v5:5-cn`                                | 3010                           | 面板用 `python3 panel/server.py` 跑在宿主机 |
 
 **一体化（面板已内置）**
 
@@ -223,6 +224,20 @@ docker build -f deploy/Dockerfile.all-in-one --build-arg BASE=ms-rewards:v5-cn -
 ```
 
 - 一体化镜像里的面板默认**不自带定时**（`DISABLE_SCHEDULE=1`），避免和运行时 cron 打架
+
+**想恢复面板里的「重建容器 / 镜像管理」？** 用带 docker CLI 的变体，并挂 socket：
+
+```bash
+docker run -d --name ms-rewards --restart unless-stopped \
+  -p 5310:5310 -v /var/run/docker.sock:/var/run/docker.sock \
+  -e TZ=Asia/Shanghai -e API_TOKEN=<token> -e PANEL_PASSWORD=admin \
+  -v "$PWD/config:/usr/src/microsoft-rewards-script/config" \
+  -v "$PWD/sessions:/usr/src/microsoft-rewards-script/sessions" \
+  -v ms-panel-data:/opt/data --env-file .env \
+  docker.io/wangxiangya/ms-rewards-v5:5-cn-allinone-docker
+```
+
+⚠️ 挂 `docker.sock` 等于把宿主 docker 权限交给容器，只在你信任这个镜像时用。
 
 ---
 

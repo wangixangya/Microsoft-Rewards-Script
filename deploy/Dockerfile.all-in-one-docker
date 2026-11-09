@@ -1,0 +1,21 @@
+# 一体化镜像（含 docker CLI）—— 让面板里的「容器/镜像」相关功能在容器内也能用
+#
+# 与 5-cn-allinone 的唯一区别：多一个 docker 客户端。
+# 运行时必须挂 socket，否则 docker 命令报错：
+#   -v /var/run/docker.sock:/var/run/docker.sock
+#
+# 构建：
+#   docker build -f deploy/Dockerfile.all-in-one-docker \
+#     --build-arg BASE=ms-rewards:5-cn-allinone -t ms-rewards:allinone-docker .
+ARG BASE=docker.io/wangxiangya/ms-rewards-v5:5-cn-allinone
+FROM ${BASE}
+
+# docker 官方 CLI 镜像是 Alpine 打包的静态 Go 二进制，复制到 Debian 基座可直接用
+COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
+
+RUN /usr/local/bin/docker --version
+
+ENV DOCKER_HOST=unix:///var/run/docker.sock
+
+LABEL org.opencontainers.image.title="ms-rewards-all-in-one-docker" \
+      org.opencontainers.image.description="All-in-one runtime + panel, with docker CLI for in-container container/image management"
