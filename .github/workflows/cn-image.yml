@@ -18,6 +18,9 @@ on:
             - '.github/scripts/**'
             - '.github/docker/**'
             - '.github/workflows/cn-image.yml'
+            - 'deploy/**'
+            - 'panel-image/**'
+            - 'panel/**'
     workflow_dispatch:
 
 permissions:
