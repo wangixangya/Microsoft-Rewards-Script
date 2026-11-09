@@ -102,6 +102,12 @@ docker run -d --name ms-rewards \
 | `ghcr.io/wangixangya/microsoft-rewards-script:5`    | 本仓库镜像（与上游一致）      |
 | `ghcr.io/wangixangya/microsoft-rewards-script:5-cn` | **国内补丁版 + 瘦身**（推荐） |
 
+> **拉不下来？** ghcr 包若提示 `denied` / `403`，有两种解法：
+>
+> - 带凭证拉：`echo <有 read:packages 权限的 PAT> | docker login ghcr.io -u wangixangya --password-stdin`
+> - **免登录离线包**：从 [Release `v5-cn-image`](https://github.com/wangixangya/Microsoft-Rewards-Script/releases/tag/v5-cn-image) 下载 `ms-rewards-v5-cn.tar.zst`，然后
+>   `zstd -d ms-rewards-v5-cn.tar.zst -c | docker load`（导入后标签与学生镜像一致）
+
 <details>
 <summary><b>本地构建</b></summary>
 
