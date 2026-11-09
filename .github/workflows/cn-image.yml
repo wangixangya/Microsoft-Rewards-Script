@@ -152,6 +152,12 @@ jobs:
               id: ver
               run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
+            - name: Read panel version
+              id: pver
+              run: |
+                  v=$(sed -n 's/^VERSION = "\(.*\)"/\1/p' panel/server.py | head -1)
+                  echo "version=${v:-0.0.0}" >> "$GITHUB_OUTPUT"
+
             - name: Skip when no Docker Hub token
               if: env.DOCKERHUB_TOKEN == ''
               run: echo "DOCKERHUB_TOKEN 未配置，跳过多镜像发布"
@@ -181,7 +187,7 @@ jobs:
                   set -e
                   DP="docker.io/${DOCKERHUB_USERNAME}/ms-rewards-v5-panel"
                   docker build -f panel-image/Dockerfile \
-                    -t "${DP}:latest" -t "${DP}:${{ steps.ver.outputs.version }}" .
+                    -t "${DP}:latest" -t "${DP}:${{ steps.pver.outputs.version }}" .
                   docker push "${DP}:latest"
-                  docker push "${DP}:${{ steps.ver.outputs.version }}"
-                  echo "已推送 ${DP}:latest 与 :${{ steps.ver.outputs.version }}"
+                  docker push "${DP}:${{ steps.pver.outputs.version }}"
+                  echo "已推送 ${DP}:latest 与 :${{ steps.pver.outputs.version }}（面板版本）"
