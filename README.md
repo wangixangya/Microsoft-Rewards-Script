@@ -178,6 +178,14 @@ docker run -d --name ms-rewards-panel --restart unless-stopped \
 或者一条 `docker compose` 起两个容器：[`deploy/docker-compose.yml`](deploy/docker-compose.yml)
 
 - 面板状态都在卷里（`panel.conf`、`state.json`、历史统计），换镜像不丢
+
+**自己构建**（本机已有运行镜像时不用拉 763 MB）
+```bash
+# 面板独立镜像
+docker build -f panel-image/Dockerfile -t ms-rewards-panel:local .
+# 一体化镜像（BASE 指向本地已有运行时镜像）
+docker build -f deploy/Dockerfile.all-in-one --build-arg BASE=ms-rewards:v5-cn -t ms-rewards:allinone .
+```
 - 一体化镜像里的面板默认**不自带定时**（`DISABLE_SCHEDULE=1`），避免和运行时 cron 打架
 
 ---
