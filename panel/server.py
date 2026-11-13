@@ -911,6 +911,44 @@ def set_account_proxy(idx, proxy):
     _write_env(lines)
 
 
+PROXY_URL_RE = re.compile(
+    r"^(?:(?P<scheme>https?|socks5h?|socks4a?)://)?"
+    r"(?:(?P<user>[^:@/\s]+)(?::(?P<pwd>[^@/\s]*))?@)?"
+    r"(?P<host>\[[0-9a-fA-F:]+\]|[^:@/\s]+)"
+    r":(?P<port>\d{1,5})/?$",
+    re.I,
+)
+
+
+def parse_proxy_url(raw):
+    """把一整串代理地址拆成 {type,host,port,username,password}。识别失败返回 None。
+
+    支持 socks5://user:pass@host:port、http://host:port、host:port 等写法。
+    """
+    raw = str(raw or "").strip()
+    if not raw:
+        return None
+    m = PROXY_URL_RE.match(raw)
+    if not m:
+        return None
+    scheme = (m.group("scheme") or "http").lower()
+    if scheme in ("socks5h", "socks5"):
+        ptype = "socks5"
+    elif scheme in ("socks4a", "socks4"):
+        ptype = "socks4"
+    elif scheme.startswith("http"):
+        ptype = "http"
+    else:
+        ptype = "http"
+    host = (m.group("host") or "").strip("[]")
+    try:
+        port = int(m.group("port"))
+    except (TypeError, ValueError):
+        return None
+    return {"type": ptype, "host": host, "port": port,
+            "username": m.group("user") or "", "password": m.group("pwd") or ""}
+
+
 def add_proxy(payload):
     name = str(payload.get("name", "")).strip()
     ptype = str(payload.get("type", "http")).strip().lower()
@@ -921,9 +959,23 @@ def add_proxy(payload):
     try:
         port = int(str(payload.get("port", "")).strip())
     except Exception:
+        port = None
+
+    # 整串地址优先级最高：填了就直接覆盖上面的分字段
+    raw_url = str(payload.get("url") or payload.get("proxy") or "").strip()
+    if raw_url:
+        parsed = parse_proxy_url(raw_url)
+        if not parsed:
+            return {"error": "代理地址格式不对，示例：socks5://user:pass@1.2.3.4:1080"}
+        ptype = parsed["type"]
+        host = parsed["host"]
+        port = parsed["port"]
+        user = parsed["username"]
+        pwd = parsed["password"]
+    if port is None:
         return {"error": "端口必须是数字"}
-    if ptype not in ("http", "socks5"):
-        return {"error": "只支持 http 和 socks5 两类代理"}
+    if ptype not in ("http", "socks5", "socks4"):
+        return {"error": "只支持 http / socks5（socks4 仅限不带认证）"}
     if not host or re.search(r"\s", host):
         return {"error": "代理地址不合法"}
     if not (1 <= port <= 65535):
@@ -962,6 +1014,13 @@ def del_proxy(pid):
 
 
 def test_proxy(p, timeout=18):
+    raw_url = str((p or {}).get("url") or (p or {}).get("proxy") or "").strip()
+    if raw_url:
+        parsed = parse_proxy_url(raw_url)
+        if not parsed:
+            return {"ok": False, "detail": "代理地址格式不对"}
+        p = dict(p or {})
+        p.update(parsed)
     scheme = "socks5h" if p.get("type") == "socks5" else p.get("type", "http")
     auth = ""
     if p.get("username"):

@@ -222,7 +222,6 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
     <div class="side-foot">
       <div class="stat"><span>调度</span><span id="footSched">—</span></div>
       <a class="btn sm ghost linkbtn" href="https://github.com/wangixangya/Microsoft-Rewards-Script" target="_blank" rel="noopener">GitHub 仓库</a>
-      <a class="btn sm ghost linkbtn" href="https://t.me/wangixangya" target="_blank" rel="noopener">Telegram 群</a>
       <button class="btn sm ghost" id="logoutBtn">退出登录</button>
     </div>
   </aside>
@@ -579,9 +578,11 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.65;resize:vertical
     </div>
     <div class="sec" id="sec-proxy">
       <div class="card" style="margin-bottom:14px">
-        <div class="card-h"><h3>添加代理</h3><span class="hint">只支持长效（静态）代理；SOCKS5 不能带账号密码</span></div>
+        <div class="card-h"><h3>添加代理</h3><span class="hint">支持整串粘贴（优先级最高）；SOCKS5 不能带账号密码，HTTP 可带</span></div>
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">
           <div><div class="k" style="margin-bottom:6px">名称（可选）</div><input type="text" id="pxName" placeholder="例如 电信长效1"></div>
+          <div style="grid-column:1/-1"><div class="k" style="margin-bottom:6px">代理地址（可整串粘贴，填了就以它为准）</div>
+            <input type="text" id="pxUrl" placeholder="socks5://1.2.3.4:1080 或 http://user:pass@1.2.3.4:8080"></div>
           <div><div class="k" style="margin-bottom:6px">类型</div>
             <select id="pxType"><option value="socks5">SOCKS5</option><option value="http">HTTP</option></select></div>
           <div><div class="k" style="margin-bottom:6px">地址 / IP</div><input type="text" id="pxHost" placeholder="1.2.3.4 或 proxy.example.com"></div>
@@ -2205,24 +2206,25 @@ async function loadProxies() {
   } catch (e) { $('#pxMsg').textContent = '读取失败：' + e.message; }
 }
 function pxForm() {
-  return {name: $('#pxName').value.trim(), type: $('#pxType').value, host: $('#pxHost').value.trim(),
+  return {name: $('#pxName').value.trim(), url: $('#pxUrl').value.trim(),
+          type: $('#pxType').value, host: $('#pxHost').value.trim(),
           port: $('#pxPort').value.trim(), username: $('#pxUser').value.trim(),
           password: $('#pxPass').value, note: $('#pxNote').value.trim()};
 }
 $('#pxTestNew').onclick = async () => {
   const f = pxForm();
-  if (!f.host || !f.port) { $('#pxMsg').textContent = '先填地址和端口'; return; }
+  if (!f.url && (!f.host || !f.port)) { $('#pxMsg').textContent = '填整串地址，或填地址+端口'; return; }
   $('#pxMsg').textContent = '测试中…（最长 18 秒）';
   const r = await papi('/panel/proxies/test', {method: 'POST', body: JSON.stringify(f)});
   $('#pxMsg').textContent = r.ok ? `连通 OK（HTTP ${r.httpCode}）` : `不通：${r.httpCode || ''} ${r.detail || ''}`;
 };
 $('#pxAdd').onclick = async () => {
   const f = pxForm();
-  if (!f.host || !f.port) { $('#pxMsg').textContent = '先填地址和端口'; return; }
+  if (!f.url && (!f.host || !f.port)) { $('#pxMsg').textContent = '填整串地址，或填地址+端口'; return; }
   $('#pxMsg').textContent = '添加中…';
   const r = await papi('/panel/proxies', {method: 'POST', body: JSON.stringify(f)});
   if (r.error) { $('#pxMsg').textContent = '添加失败：' + r.error; return; }
-  ['pxName','pxHost','pxPort','pxUser','pxPass','pxNote'].forEach(id => $('#' + id).value = '');
+  ['pxName','pxUrl','pxHost','pxPort','pxUser','pxPass','pxNote'].forEach(id => $('#' + id).value = '');
   $('#pxMsg').textContent = '已添加' + (r.test ? (r.test.ok ? '，连通正常' : '，但测试不通') : '');
   loadProxies();
 };
