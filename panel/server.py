@@ -1147,20 +1147,57 @@ def run_state():
 
 
 # ---------- 推送 ----------
+MEDALS = ("\U0001F947", "\U0001F948", "\U0001F949")
+
+
+def _fmt_num(n):
+    try:
+        return f"{int(n):,}"
+    except (TypeError, ValueError):
+        return str(n)
+
+
 def build_summary():
-    """从统计里拼当天收益摘要，返回 (分数, 正文)。"""
+    """从统计里拼当天收益摘要，返回 (分数, 正文)。正文用 Telegram HTML。"""
     import stats as statsmod
     data = statsmod.refresh(2)
-    today = data["days"][-1]
-    yest = data["days"][-2]
-    lines = [f"今日 {today['total']} 分（昨日 {yest['total']}）"]
-    for acct, v in today["accounts"].items():
+    days = data.get("days") or []
+    if not days:
+        return 0, "暂无统计数据"
+    today = days[-1]
+    yest = days[-2] if len(days) > 1 else {"total": 0}
+    accts = today.get("accounts") or {}
+    total = int(today.get("total") or 0)
+    yest_total = int(yest.get("total") or 0)
+    rows = sorted(accts.items(), key=lambda kv: -(kv[1].get("total") or 0))
+
+    lines = [f"\U0001F4C5 <b>{time.strftime('%Y-%m-%d')}</b> \u00b7 {len(rows)} \u4e2a\u8d26\u53f7\u5df2\u5b8c\u6210",
+             "\u2501" * 12]
+    for i, (acct, v) in enumerate(rows):
+        got = int(v.get("total") or 0)
         bal = v.get("balance")
-        lines.append(f"· {acct}: +{v['total']}" + (f"，余额 {bal}" if bal else ""))
-    total_bal = sum((v.get("balance") or 0) for v in today["accounts"].values())
+        badge = MEDALS[i] if i < len(MEDALS) else "\u25aa\ufe0f"
+        head = f"{badge} <b>{acct}</b>"
+        if not got:
+            head += "  <i>\u4eca\u65e5 0 \u5206</i>"
+        lines.append(head)
+        bits = [f"\u4eca\u65e5 <b>+{got}</b> \u5206"]
+        if bal:
+            bits.append(f"\u4f59\u989d <code>{_fmt_num(bal)}</code>")
+        lines.append("    " + " \u00b7 ".join(bits))
+
+    total_bal = sum((v.get("balance") or 0) for v in accts.values())
+    lines.append("\u2501" * 12)
+    tail = f"\U0001F4B0 \u5408\u8ba1 <b>+{total}</b> \u5206"
     if total_bal:
-        lines.append(f"合计余额 {total_bal}")
-    return today["total"], "\n".join(lines)
+        tail += f" \u00b7 \u4f59\u989d <b>{_fmt_num(total_bal)}</b>"
+    lines.append(tail)
+    if yest_total:
+        diff = total - yest_total
+        arrow = "\U0001F4C8" if diff > 0 else ("\U0001F4C9" if diff < 0 else "\u2796")
+        sign = f"+{diff}" if diff > 0 else str(diff)
+        lines.append(f"{arrow} \u5bf9\u6bd4\u6628\u65e5 {yest_total} \u5206\uff1a<b>{sign}</b>")
+    return total, "\n".join(lines)
 
 
 def notify_loop():
@@ -1186,14 +1223,14 @@ def notify_loop():
                     as_["fails"] = as_.get("fails", 0) + 1 if bad else 0
                     as_["zeros"] = as_.get("zeros", 0) + 1 if (score or 0) == 0 else 0
                     if bad and as_["fails"] >= 2 and not as_.get("failAlerted"):
-                        notifymod.broadcast("Rewards 连续运行失败",
+                        notifymod.broadcast(f"🚨 微软积分 · 连续 {as_['fails']} 次异常退出",
                                             f"已连续 {as_['fails']} 次异常退出（最近退出码 {code_exit}）\n{text}")
                         as_["failAlerted"] = True
                         log(f"[notify] 连续失败告警（{as_['fails']} 次）")
                     if as_["fails"] == 0:
                         as_["failAlerted"] = False
                     if (score or 0) == 0 and as_["zeros"] >= 2 and not as_.get("zeroAlerted"):
-                        notifymod.broadcast("Rewards 连续 0 分",
+                        notifymod.broadcast(f"🟡 微软积分 · 连续 {as_['zeros']} 次 0 分",
                                             f"已连续 {as_['zeros']} 次运行没有得分，检查登录/地区/配额\n{text}")
                         as_["zeroAlerted"] = True
                         log(f"[notify] 连续 0 分告警（{as_['zeros']} 次）")
@@ -1204,11 +1241,11 @@ def notify_loop():
                     log("[notify] 告警状态处理异常", _e)
                 if code_exit not in (0, None, 143):
                     if ev.get("on_error", True):
-                        t = "Rewards 运行异常退出"
-                        res = notifymod.broadcast(t, f"退出码 {code_exit}\n{text}")
+                        t = f"⚠️ 微软积分 · 运行异常（退出码 {code_exit}）"
+                        res = notifymod.broadcast(t, text)
                         log(f"[notify] 异常通知渠道 {len(res or [])} 个" if res else "[notify] 未配置渠道，异常未外发")
                 elif ev.get("on_finish", True):
-                    res = notifymod.broadcast(f"Rewards 运行完成 +{score} 分", text)
+                    res = notifymod.broadcast(f"✅ 微软积分 · 本轮 +{score} 分", text)
                     if res:
                         okn = sum(1 for r in res if r.get("ok"))
                         log(f"[notify] 完成通知已发送 {okn}/{len(res)} 个渠道")
@@ -1219,7 +1256,7 @@ def notify_loop():
                 stamp = time.strftime("%Y%m%d") + now
                 if now == (ev.get("daily_time") or "10:00") and daily_sent != stamp:
                     score, text = build_summary()
-                    notifymod.broadcast(f"Rewards 每日汇总 {score} 分", text)
+                    notifymod.broadcast(f"📅 微软积分 · 今日汇总 {score} 分", text)
                     daily_sent = stamp
                     log("[notify] 已推送每日汇总")
             prev = state
@@ -2465,7 +2502,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 return self.send_json(400, {"error": "bad json"})
             cid = payload.get("id")
-            results = notifymod.broadcast("Rewards 测试消息", "这是一条来自控制台的测试推送。\n如果收到说明渠道配置可用。",
+            results = notifymod.broadcast("🔔 微软积分 · 测试推送", "这是一条来自控制台的测试推送。\n如果收到说明渠道配置可用。",
                                           only=[cid] if cid else None)
             if not results:
                 return self.send_json(400, {"error": "没有启用的渠道"})
