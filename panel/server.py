@@ -1216,6 +1216,36 @@ def _fmt_num(n):
         return str(n)
 
 
+def stats_settle(max_wait=90, quiet=8):
+    """等统计数据落稳：今日账号数齐、每个号都带余额、总分连续 quiet 秒不变。
+
+    跑完瞬间 stats 还没聚合第二个号（余额为空、总分偏小），直接 build_summary
+    会推出「本轮 +201 · 余额 15,792」这种半截数据。返回 True=已稳定，False=超时。
+    """
+    import stats as statsmod
+    deadline = time.time() + max_wait
+    last_total, stable_since = None, None
+    while True:
+        try:
+            data = statsmod.refresh(2)
+        except Exception:
+            data = {}
+        days = data.get("days") or []
+        today = days[-1] if days else {}
+        accts = today.get("accounts") or {}
+        total = int(today.get("total") or 0)
+        missing = [k for k, v in accts.items() if not v.get("balance")]
+        if total != last_total:
+            last_total, stable_since = total, time.time()
+        ready = bool(accts) and not missing and stable_since and (time.time() - stable_since) >= quiet
+        if ready:
+            return True
+        if time.time() >= deadline:
+            log(f"[notify] 统计未在 {max_wait}s 内落稳（总分 {total}，缺余额 {len(missing)} 个），按当前数据推送")
+            return False
+        time.sleep(5)
+
+
 def build_summary():
     """从统计里拼当天收益摘要，返回 (分数, 正文)。正文用 Telegram HTML。"""
     import stats as statsmod
@@ -1246,10 +1276,13 @@ def build_summary():
         lines.append("    " + " \u00b7 ".join(bits))
 
     total_bal = sum((v.get("balance") or 0) for v in accts.values())
+    missing_bal = [k for k, v in accts.items() if not v.get("balance")]
     lines.append("\u2501" * 12)
     tail = f"\U0001F4B0 \u5408\u8ba1 <b>+{total}</b> \u5206"
-    if total_bal:
+    if total_bal and not missing_bal:
         tail += f" \u00b7 \u4f59\u989d <b>{_fmt_num(total_bal)}</b>"
+    elif total_bal and missing_bal:
+        tail += f" \u00b7 \u4f59\u989d <b>{_fmt_num(total_bal)}</b>+（{len(missing_bal)} \u4e2a\u53f7\u672a\u62c9\u5230\uff09"
     lines.append(tail)
     if yest_total:
         diff = total - yest_total
@@ -1274,6 +1307,11 @@ def notify_loop():
             if prev == "running" and state in ("idle", "failed", "error", "stopped"):
                 last = st.get("lastExit") or {}
                 code_exit = last.get("code")
+                # 先等 stats 聚合完（否则会推出半截账号/余额）
+                try:
+                    stats_settle()
+                except Exception as _se:
+                    log("[notify] stats_settle 异常", _se)
                 score, text = build_summary()
                 # —— 连续失败 / 连续 0 分告警（状态落盘，重启不清零） ——
                 try:
