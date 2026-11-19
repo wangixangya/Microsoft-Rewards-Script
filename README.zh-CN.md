@@ -30,6 +30,12 @@ curl -fsSL https://raw.githubusercontent.com/wangixangya/Microsoft-Rewards-Scrip
 
 ---
 
+## 🎁 邀请链接
+
+**用下面的邀请链接注册 Microsoft Rewards，双方都能拿奖励积分**
+
+> 👉 <https://rewards.bing.com/welcome?rh=lrX3PgD0Oxw&ref=rafsrchae>
+
 ## 概览
 
 **微软积分自动化脚本** —— 支持 API 与浏览器两种模式、会话复用、多账号、本地化搜索与控制接口。
@@ -227,12 +233,6 @@ cd panel && python3 server.py     # 0.0.0.0:5310，密码见 panel.conf
 | [panel/README.md](panel/README.md)         | 面板部署与版本变更                                         |
 
 ---
-
-## 邀请链接
-
-通过下面的邀请链接注册 Microsoft Rewards，双方都能拿到奖励积分：
-
-<https://rewards.bing.com/welcome?rh=lrX3PgD0Oxw&ref=rafsrchae>
 
 ## 安全与声明
 
