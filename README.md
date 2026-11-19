@@ -31,6 +31,12 @@ curl -fsSL https://raw.githubusercontent.com/wangixangya/Microsoft-Rewards-Scrip
 
 ---
 
+## 🎁 邀请链接
+
+**用下面的邀请链接注册 Microsoft Rewards，双方都能拿奖励积分**
+
+> 👉 <https://rewards.bing.com/welcome?rh=lrX3PgD0Oxw&ref=rafsrchae>
+
 ## 概览
 
 **微软积分自动化脚本** —— 支持 API 与浏览器两种模式、会话复用、多账号、本地化搜索与控制接口。
@@ -409,12 +415,6 @@ scheduler (`DISABLE_SCHEDULE=1`) so it never competes with the runtime cron.
 - [docs/usage.md](docs/usage.md) — install, accounts, settings, commands, troubleshooting
 - [docs/control-api.md](docs/control-api.md) — authentication, endpoints, run control, scheduling
 - [README.zh-CN.md](README.zh-CN.md) — full Chinese documentation
-
-## Referral link
-
-Sign up for Microsoft Rewards with the referral link below — both sides get bonus points:
-
-<https://rewards.bing.com/welcome?rh=lrX3PgD0Oxw&ref=rafsrchae>
 
 ### Security & disclaimer
 
