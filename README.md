@@ -410,6 +410,12 @@ scheduler (`DISABLE_SCHEDULE=1`) so it never competes with the runtime cron.
 - [docs/control-api.md](docs/control-api.md) — authentication, endpoints, run control, scheduling
 - [README.zh-CN.md](README.zh-CN.md) — full Chinese documentation
 
+## Referral link
+
+Sign up for Microsoft Rewards with the referral link below — both sides get bonus points:
+
+<https://rewards.bing.com/welcome?rh=lrX3PgD0Oxw&ref=rafsrchae>
+
 ### Security & disclaimer
 
 Keep `.env`, `config/`, `sessions/` and `diagnostics/` private — they contain credentials and
