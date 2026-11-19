@@ -74,3 +74,8 @@ export const URLs = {
 } as const
 
 export const REWARDS_BASE_URL = URLs.rewards.origin
+
+// cn.bing.com 兼容：国内访问 www.bing.com 会被 302 到 cn.bing.com，origin 不再是 www.bing.com
+export function isBingHost(origin: string): boolean {
+    return /^https:\/\/([a-z0-9-]+\.)*bing\.com$/i.test(origin)
+}
