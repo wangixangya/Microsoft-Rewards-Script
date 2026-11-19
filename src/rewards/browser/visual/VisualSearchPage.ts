@@ -4,7 +4,7 @@ import { browserTimeout } from '../../../browser/BrowserTiming'
 import { BrowserTaskPage } from '../../../browser/BrowserTaskPage'
 import type { Locator, Page, Response } from 'patchright'
 
-import { URLs, isBingHost } from '../../../constants/urls'
+import { URLs } from '../../../constants/urls'
 import type { BotContext } from '../../../core/BotContext'
 import type { VisualSearchCandidate } from '../../types/VisualSearchTypes'
 import { parseBingSearchReport, type BingSearchReport } from '../../shared/search/BingSearchReport'
@@ -239,7 +239,8 @@ export class VisualSearchPage {
             if (url.protocol !== 'https:') return null
 
             const host = url.hostname.toLowerCase()
-            if (host !== 'www.bing.com' && host !== 'bing.com' && host !== 'th.bing.com') return null
+            if (host !== 'www.bing.com' && host !== 'bing.com' && host !== 'th.bing.com' && host !== 'cn.bing.com')
+                return null
 
             const hasThumbnailId = Boolean(url.searchParams.get('id'))
             const isThumbnailPath = url.pathname.toLowerCase() === '/th'
@@ -408,7 +409,7 @@ export class VisualSearchPage {
         if (response.request().method() !== 'POST') return false
         try {
             const url = new URL(response.url())
-            return isBingHost(url.origin) && url.pathname.toLowerCase() === '/rewardsapp/reportactivity'
+            return url.origin === URLs.bing.origin && url.pathname.toLowerCase() === '/rewardsapp/reportactivity'
         } catch {
             return false
         }

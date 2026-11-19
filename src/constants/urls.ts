@@ -1,6 +1,6 @@
 const REWARDS = 'https://rewards.bing.com'
 const PLATFORM = 'https://prod.rewardsplatform.microsoft.com'
-const BING = 'https://www.bing.com'
+const BING = 'https://cn.bing.com'
 const LOGIN_LIVE = 'https://login.live.com'
 const LOGIN_MS = 'https://login.microsoftonline.com'
 
@@ -35,6 +35,8 @@ export const URLs = {
     platform: {
         origin: PLATFORM,
         me: (channel: string) => `${PLATFORM}/dapi/me?channel=${channel}&options=613`,
+        // Fork: SAIOS surface (options=612) carries promotions the 613 app response omits.
+        meSAIOS: (channel: string) => `${PLATFORM}/dapi/me?channel=${channel}&options=612`,
         edgeProfile: `${PLATFORM}/dapi/me?channel=edge&options=Profile,Promotions`,
         activities: `${PLATFORM}/dapi/me/activities`
     },
@@ -72,8 +74,3 @@ export const URLs = {
 } as const
 
 export const REWARDS_BASE_URL = URLs.rewards.origin
-
-// cn.bing.com 兼容：国内访问 www.bing.com 会被 302 到 cn.bing.com，origin 不再是 www.bing.com
-export function isBingHost(origin: string): boolean {
-    return /^https:\/\/([a-z0-9-]+\.)*bing\.com$/i.test(origin)
-}
