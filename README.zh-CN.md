@@ -228,6 +228,12 @@ cd panel && python3 server.py     # 0.0.0.0:5310，密码见 panel.conf
 
 ---
 
+## 邀请链接
+
+通过下面的邀请链接注册 Microsoft Rewards，双方都能拿到奖励积分：
+
+<https://rewards.bing.com/welcome?rh=lrX3PgD0Oxw&ref=rafsrchae>
+
 ## 安全与声明
 
 `.env`、`config/`、`sessions/`、`diagnostics/` 含账号凭据与会话 Cookie，**不要提交、不要外传**。
