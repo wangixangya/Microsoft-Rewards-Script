@@ -1182,13 +1182,14 @@ def recreate_in_container(image, timeout=300):
         spec = json.loads(raw)[0]
     except Exception:
         return {"code": -1, "err": "读取自身容器规格失败"}
-    # 环境变量：当前容器里除 ACCOUNT_* 之外的（含 API_MODE/CRON_SCHEDULE 等），
-    # 账号部分以面板改过的 env.list 为准，这样面板里加/改账号能真正生效
-    # 环境变量：先取当前容器的，再用 env.list（面板改过的）覆盖——这样面板里改账号/并发才真正生效
+    # 环境变量：账号以面板改过的 env.list 为唯一权威。
+    # 必须从旧容器 env 里排除 ACCOUNT_<n>_*，否则被删掉的账号会因为旧 env 残留而复活，
+    # 面板加/删账号看起来"没用"（实际是重建时旧账号又被带回）。
+    import re as _re
     env_map = {}
     for e in spec.get("Config", {}).get("Env", []):
         k, _, v = e.partition("=")
-        if k and k not in SKIP_ENV:
+        if k and k not in SKIP_ENV and not _re.match(r"^ACCOUNT_\d+_", k):
             env_map[k] = v
     for ln in env_lines():
         if not ln or ln.lstrip().startswith("#") or "=" not in ln:
