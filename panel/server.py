@@ -1567,7 +1567,21 @@ def _image_remote(tag, ttl=300):
         ms = d.get("manifests") or []
         archs = {m.get("platform", {}).get("architecture", "?") for m in ms}
         plat = ",".join(sorted(a for a in archs if a in ("amd64", "arm64", "386", "arm")))
-        val = {"tag": tag, "digest": (ms[0]["digest"].replace("sha256:", "")[:12] if ms else ""), "platforms": plat}
+        # 顶层摘要走 imagetools, 与 deployed-image.json 的 official_digest 同口径;
+        # manifest list 里 ms[0] 可能是 buildx attestation(platform=unknown), 不能直接用。
+        top = _sh(["docker", "buildx", "imagetools", "inspect", tag], 25) or ""
+        digest = ""
+        for line in top.splitlines():
+            if line.strip().startswith("Digest:"):
+                digest = line.split(":", 1)[1].strip().replace("sha256:", "")[:12]
+                break
+        if not digest:
+            for m in ms:
+                if (m.get("platform", {}).get("architecture") == "amd64"
+                        and m.get("platform", {}).get("os") == "linux"):
+                    digest = m["digest"].replace("sha256:", "")[:12]
+                    break
+        val = {"tag": tag, "digest": digest, "platforms": plat}
         _REMOTE_CACHE[tag] = {"at": time.time(), "val": val}
         return val
     except Exception:
