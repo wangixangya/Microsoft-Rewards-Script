@@ -278,12 +278,13 @@ docker run -d --name ms-rewards --restart unless-stopped \
 
 ## 文档
 
-| 文档                                       | 内容                                                       |
-| :----------------------------------------- | :--------------------------------------------------------- |
-| [README.zh-CN.md](README.zh-CN.md)         | 完整中文说明：v5 差异、配置项、面板、单文件、同步流程、FAQ |
-| [docs/usage.md](docs/usage.md)             | 安装、账号、设置、命令、排错                               |
-| [docs/control-api.md](docs/control-api.md) | 鉴权、接口、运行控制、调度、面板数据                       |
-| [panel/README.md](panel/README.md)         | 面板部署与版本变更                                         |
+| 文档                                                               | 内容                                                       |
+| :----------------------------------------------------------------- | :--------------------------------------------------------- |
+| [README.zh-CN.md](README.zh-CN.md)                                 | 完整中文说明：v5 差异、配置项、面板、单文件、同步流程、FAQ |
+| [docs/usage.md](docs/usage.md)                                     | 安装、账号、设置、命令、排错                               |
+| [docs/control-api.md](docs/control-api.md)                         | 鉴权、接口、运行控制、调度、面板数据                       |
+| [docs/ms-domains-direct.zh-CN.md](docs/ms-domains-direct.zh-CN.md) | 微软/Bing 域名强制直连：原因、域名清单、配置与验证         |
+| [panel/README.md](panel/README.md)                                 | 面板部署与版本变更                                         |
 
 ---
 
