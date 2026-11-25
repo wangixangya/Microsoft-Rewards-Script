@@ -1552,6 +1552,40 @@ def _image_local(tag):
 _REMOTE_CACHE: dict = {}
 
 
+def _top_digest_registry(tag, timeout=20):
+    """用 registry v2 HTTP API 取镜像 tag 的顶层 manifest digest（12位）。
+
+    容器内的 docker CLI 是精简版没有 buildx 插件，`docker manifest inspect` 拿到的
+    amd64 子清单 digest 又不等于顶层 list digest，都会让 badge 误报「发现新版本」。
+    registry API 的 Docker-Content-Digest 头就是顶层摘要，与 deployed-image.json 同口径。
+    支持 ghcr.io / docker.io 等公开 registry 的匿名 token。
+    """
+    try:
+        import urllib.request as _u
+        # tag 形如 ghcr.io/thenetsky/microsoft-rewards-script:5
+        rest = tag.split("://")[-1]
+        reg = rest.split("/")[0]
+        path = rest[len(reg):].lstrip("/")
+        repo, _, ref = path.rpartition(":")
+        if not repo:  # 无 tag，默认 latest
+            repo, ref = path, "latest"
+        scope = f"repository:{repo}:pull"
+        tok_url = f"https://{reg}/token?scope={scope}&service={reg}"
+        tok = json.loads(_u.urlopen(tok_url, timeout=timeout).read())["token"]
+        req = _u.Request(
+            f"https://{reg}/v2/{repo}/manifests/{ref}",
+            headers={"Authorization": "Bearer " + tok,
+                     "Accept": "application/vnd.oci.image.index.v1+json, "
+                               "application/vnd.docker.distribution.manifest.list.v2+json, "
+                               "application/vnd.docker.distribution.manifest.v2+json"},
+        )
+        resp = _u.urlopen(req, timeout=timeout)
+        dcd = resp.headers.get("Docker-Content-Digest") or ""
+        return dcd.replace("sha256:", "")[:12] if dcd.startswith("sha256:") else ""
+    except Exception:
+        return ""
+
+
 def _image_remote(tag, ttl=300):
     """远端镜像 manifest 摘要（需要本机已 docker login ghcr.io，失败返回 None）
     manifest inspect 要 10~20 秒，按 tag 缓存 5 分钟，避免每次打开页面都卡住。"""
@@ -1567,20 +1601,11 @@ def _image_remote(tag, ttl=300):
         ms = d.get("manifests") or []
         archs = {m.get("platform", {}).get("architecture", "?") for m in ms}
         plat = ",".join(sorted(a for a in archs if a in ("amd64", "arm64", "386", "arm")))
-        # 顶层摘要走 imagetools, 与 deployed-image.json 的 official_digest 同口径;
-        # manifest list 里 ms[0] 可能是 buildx attestation(platform=unknown), 不能直接用。
-        top = _sh(["docker", "buildx", "imagetools", "inspect", tag], 25) or ""
-        digest = ""
-        for line in top.splitlines():
-            if line.strip().startswith("Digest:"):
-                digest = line.split(":", 1)[1].strip().replace("sha256:", "")[:12]
-                break
-        if not digest:
-            for m in ms:
-                if (m.get("platform", {}).get("architecture") == "amd64"
-                        and m.get("platform", {}).get("os") == "linux"):
-                    digest = m["digest"].replace("sha256:", "")[:12]
-                    break
+        # 顶层摘要走 registry HTTP API 的 Docker-Content-Digest，与 deployed-image.json
+        # 同口径。不能用 manifest inspect 的 amd64 子清单 digest（那是子清单哈希，
+        # 不等于顶层 list digest）；容器内 docker CLI 也没有 buildx 插件。
+        # 拿不到就返回空（宁可不报，也不用子清单/attestation 摘要误报新版本）。
+        digest = _top_digest_registry(tag) or ""
         val = {"tag": tag, "digest": digest, "platforms": plat}
         _REMOTE_CACHE[tag] = {"at": time.time(), "val": val}
         return val
