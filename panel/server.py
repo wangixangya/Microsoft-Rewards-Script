@@ -1667,7 +1667,26 @@ def update_badge():
     }
 
 
+RELEASE_META = os.path.join(BASE, "release-meta.json")
+
+
+def _release_meta():
+    """宿主侧生成的发布元数据（容器内=/opt/data/release-meta.json）。
+
+    面板跑在容器里，看不到宿主的 git 仓库与 JS 单文件；宿主脚本
+    gen_release_meta.py 会把这些数据写进共享卷，这里优先读它。
+    """
+    try:
+        with open(RELEASE_META, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
 def _js_info():
+    meta = _release_meta().get("js")
+    if meta:
+        return meta
     if not os.path.exists(JS_FILE):
         return None
     st = os.stat(JS_FILE)
@@ -1685,6 +1704,9 @@ def _js_info():
 
 
 def _repo_info():
+    meta = _release_meta().get("repo")
+    if meta:
+        return meta
     out = _sh(["git", "-C", V5_WORK, "log", "-1", "--format=%h|%ci|%s"], 15)
     if not out:
         return None
